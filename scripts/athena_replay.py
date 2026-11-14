@@ -73,6 +73,42 @@ def _flagged(r) -> str:
     return "no"
 
 
+def _honest(res: dict) -> list[str]:
+    """Plain-language comparison with what happened, computed from run B (actual touchdown)."""
+    b = res["B"]
+    ts = b["timeseries"]
+    el = np.array(ts["sun_el_deg"])
+    hz = np.array(ts["horizon_at_sun_deg"])
+    margin13 = float((el - hz)[:13].min())                 # Athena operated ~13 h
+    disk = 0.2665                                           # solar angular radius, deg
+    rims = ", ".join(f"{np.tan(np.radians(margin13 + disk)) * d:.1f} m at {d} m"
+                     for d in (10, 20, 50))
+    flagged = _flagged(b) != "no"
+    out = []
+    if flagged:
+        out.append("- **LunaScout flags the actual touchdown as risky / not viable**, consistent with the outcome.")
+    else:
+        out.append(
+            "- **This does not match reality.** LunaScout rates the actual touchdown as "
+            f"**{b['summary']['verdict']}** (survival probability {b['summary']['survival_probability']:.2f}), "
+            "but Athena lost power about 13 h after landing.")
+    out.append(
+        f"- The real ephemeris and the 20/40 m terrain put the Sun only **{margin13:.1f} deg above the DEM horizon** "
+        f"during the first 13 h (Sun elevation {el[:13].min():.1f}-{el[:13].max():.1f} deg). To hide the whole solar "
+        f"disk, local relief only has to rise above the panels by about {rims}. Athena came to rest inside a "
+        "shadowed crater; relief that small (a crater rim a few tens of meters away, less than a meter or two "
+        "high) is below what a 20 m DEM resolves, so that shadow is not in our data. (The size of Athena's "
+        "crater is not verified here; the numbers only show how little relief is needed.)")
+    out.append(
+        "- Athena also ended up on its side, so its solar panels were close to the ground and not facing the Sun. "
+        "LunaScout assumes an upright lander with panels 2 m above the terrain.")
+    out.append(
+        "- What LunaScout does show: a very low Sun (a margin of 1-2 deg) at a site evaluated on 20 m terrain. "
+        "A low-Sun margin is itself a warning sign at the pole. A possible improvement is a \"risky\" flag when "
+        "the Sun-horizon margin is under ~2-3 deg, or wherever the slope and terrain come from the coarse DEM.")
+    return out
+
+
 def report(res: dict) -> str:
     a, b, n = res["A"], res["B"], res["nearest_point_A"]
     lines = [
@@ -126,7 +162,7 @@ def report(res: dict) -> str:
         "",
         "## Honest reading",
         "",
-        "- REVIEW_PLACEHOLDER",
+    ] + _honest(res) + [
         "- Tip-over is captured only through the DEM slope. Here the slope comes from a 20 m DEM, which smooths "
         "boulders, crater rims and small craters, so the real local slope was likely steeper than shown.",
         "- The engine models sunlight, Earth visibility and slope; it does not model the descent, the landing "

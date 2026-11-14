@@ -8,11 +8,12 @@ Survival needs sunlight (power, heat), direct-to-Earth visibility (comms) and a 
 Interfaces are fixed by `CONTRACT.md`: `engine.analyze.analyze(request) -> dict` and
 `engine.analyze.get_meta() -> dict`.
 
-> **Status of the ephemeris.** `engine/ephemeris.py` and `data/ephemeris/sun_earth_vectors.npz`
-> (JPL Horizons, owned by the ephemeris agent) are not merged yet. Until they are, the engine only
-> runs with `LUNASCOUT_ALLOW_STUB=1`, which uses `engine/_ephemeris_stub.py`: **synthetic** Sun and
-> Earth positions. Every response produced that way has `"is_sample": true` and a warning. The
-> terrain side (DEM, slopes, horizon masks) is real data.
+> **Ephemeris.** The engine uses the real JPL Horizons table of the ephemeris agent
+> (`engine/ephemeris.py`, `data/ephemeris/sun_earth_vectors.npz`, hourly 2025-01-01 to 2028-12-31,
+> see `engine/EPHEMERIS.md`). Check: the highest Sun elevation over 2025-2028 is 6.131 deg at the
+> Site20v2 center (-85.43; expected (90 - |lat|) + 1.54 = 6.11) and 6.769 deg at the IM-2 touchdown
+> (-84.79; expected 6.75). `engine/_ephemeris_stub.py` (synthetic positions) is still available for
+> tests and only with `LUNASCOUT_ALLOW_STUB=1`; responses produced with it have `"is_sample": true`.
 
 ## 1. The idea in one picture
 
@@ -123,10 +124,23 @@ They are covered by the 20 m level and by the regional horizon grid, so an IM-2 
 LOLA data, with the coarser-slope caveat of section 7. Terrain at the two sites (20 m level):
 height 5312 m / 5322 m, slope 1.0 / 2.4 degrees, highest point of the horizon 4.0 / 4.05 degrees.
 
-**Replay.** `python scripts/athena_replay.py` runs the landing (2025-03-06 17:31 UTC, 10 days,
-500 x 300 m ellipse from the intended site toward the actual one, plus a run on the actual site)
-and writes `docs/athena_replay.md`. It needs the real JPL Horizons ephemeris and refuses to write
-the report with the synthetic stub. **Status: pending the ephemeris merge (Agent 02).**
+**Replay** (`python scripts/athena_replay.py`, full report in `docs/athena_replay.md`): landing
+2025-03-06 17:31 UTC (17:00 with the 1 h step), 10 days, 500 x 300 m ellipse from the intended site
+toward the actual one (369 m, azimuth 150.6 deg), plus a run on the actual site.
+
+| | Target = intended site | Target = actual touchdown |
+|---|---|---|
+| Survival probability | 1.00 (47/47) | 0.93 (42/45), 1.00 incl. risky |
+| Verdict | viable | viable |
+| Sun at touchdown | yes, 2.4 deg | yes, 2.4 deg |
+| Time until sunset | > 10 days | > 10 days |
+
+**This does not match reality** (Athena lost power about 13 h after landing). The Sun was only
+1.6 deg above the DEM horizon during those 13 h, so relief about 0.3 m above the panels at 10 m, or
+0.7 m at 20 m, would hide the whole disk. Athena came to rest inside a shadowed crater; relief that
+small is below what the 20 m DEM resolves. Athena also lay on its side (panels near the ground, not
+facing the Sun), while LunaScout assumes an upright lander with panels 2 m up. A possible
+improvement: flag as risky a Sun-horizon margin under ~2-3 deg, or terrain from the coarse DEM.
 
 ### How to regenerate the large files
 
@@ -311,8 +325,8 @@ descriptive, not official names. The two IM-2 entries are real landing sites (so
 
 ## 8. Tests
 
-`python -m pytest engine/tests -q` : **41 passed** (52 s; the tests that need the real DEM are
-skipped when it is not downloaded).
+`python -m pytest engine/tests -q` : **51 passed** (39 s, including the 10 ephemeris tests of the
+ephemeris agent; the tests that need the real DEM are skipped when it is not downloaded).
 
 | Test | Expected | Result |
 |---|---|---|
@@ -333,7 +347,7 @@ skipped when it is not downloaded).
 
 ## 9. Timings
 
-Laptop, 16 cores, Python 3.13, synthetic ephemeris (the real one is not merged yet), default request
+Laptop, 16 cores, Python 3.13, real JPL Horizons ephemeris, default request
 (7 days, 1000 x 600 m ellipse, 30 delay days). The engine uses one core, except the on-the-fly
 horizons (2 threads here, as on a 2 vCPU Cloud Run instance). Measured after a long full-CPU
 precompute: this laptop was about 1.6x slower than when it was cool (one horizon: 24-31 ms cool,
@@ -341,15 +355,15 @@ precompute: this laptop was about 1.6x slower than when it was cool (one horizon
 
 | Case | Time | Contract target |
 |---|---|---|
-| Summit plateau (5 m tile, 384 points), with recommendations | **486 ms** (max 513) | < 3 s |
-| Summit plateau, without recommendations | **292 ms** (max 311) | < 1.5 s |
-| IM-2 actual touchdown (20 m level, ~190 points), with recommendations | **343 ms** (max 374) | < 3 s |
-| IM-2 actual touchdown, without recommendations | **144 ms** (max 161) | < 1.5 s |
-| Identical request (cache) | 7 ms | |
-| Cold: first `get_meta()` of a new process (loads 3 DEM levels + 2 grids) | 5.1 s | call `get_meta()` at API start-up |
-| Small ellipse 100 x 100 m at the IM-2 site (73 points on the fly, 2 threads), first time | 2.4 s (3.9 s with 1 thread, 1.5 s with 4) | < 3 s |
-| Same small ellipse, new date (horizons cached) | 110 ms | |
-| Largest request: 30 days, 60 delay days, 5 x 5 km | 1.9 s | |
+| Summit plateau (5 m tile, 384 points), with recommendations | **551 ms** (max 599) | < 3 s |
+| Summit plateau, without recommendations | **308 ms** (max 315) | < 1.5 s |
+| IM-2 actual touchdown (20 m level, ~190 points), with recommendations | **338 ms** (max 433) | < 3 s |
+| IM-2 actual touchdown, without recommendations | **170 ms** (max 189) | < 1.5 s |
+| Identical request (cache) | 9 ms | |
+| Cold: first `get_meta()` of a new process (loads 3 DEM levels + 2 grids + ephemeris) | 3.8 to 5.1 s | call `get_meta()` at API start-up |
+| Small ellipse 100 x 100 m at the IM-2 site (73 points on the fly, 2 threads), first time | 2.5 s (3.9 s with 1 thread, 1.5 s with 4) | < 3 s |
+| Same small ellipse, new date (horizons cached) | 73 ms | |
+| Largest request: 30 days, 60 delay days, 5 x 5 km | 1.8 s | |
 | Horizon of one observer (3 levels, 100 km rays) | 24 to 31 ms cool, 45 to 55 ms throttled | < 30 ms |
 
 Most of the warm time is Sun/Earth geometry and horizon interpolation for every point and hour;
