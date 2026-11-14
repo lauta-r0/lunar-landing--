@@ -33,7 +33,7 @@ from .errors import EngineError
 from .grid import GridSet, HorizonGrid, load_grids
 from .metrics import CLASS_NAMES, NOT_VIABLE, RISKY, VIABLE
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EPHEMERIS_FILE = REPO_ROOT / "data" / "ephemeris" / "sun_earth_vectors.npz"
 
@@ -50,23 +50,42 @@ AREA_OVER_SLOPE_MAX_PCT = 20.0
 HILLSHADE_URL = "/api/static/hillshade.png"
 
 DEFAULTS = {
-    "landing_utc": "2027-03-10T14:00:00Z",
+    "landing_utc": "2027-10-12T14:00:00Z",
     "mission_days": 7,
     "ellipse": {"semi_major_m": 1000, "semi_minor_m": 600, "azimuth_deg": 0},
-    "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8},
+    "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8,
+               "min_sun_margin_deg": None},     # None = derived from the DEM level of each point
     "options": {"risk_margin": 0.2, "delay_days_max": 30, "include_recommendations": True,
                 "observer_height_m": 2.0},
 }
 INPUT_LIMITS = {
     "mission_days": [1, 30], "semi_major_m": [50, 5000], "semi_minor_m": [50, 5000],
     "max_dark_h": [1, 400], "max_comm_gap_h": [1, 400], "min_earth_pct": [0, 100],
-    "max_slope_deg": [1, 30], "delay_days_max": [0, 60],
+    "max_slope_deg": [1, 30], "delay_days_max": [0, 60], "min_sun_margin_deg": [0, 15],
 }
 SOURCES_HORIZONS = ("JPL Horizons System (Solar System Dynamics Group, NASA JPL) — "
                     "Sun and Earth topocentric positions")
 SOURCES_REGIONAL = ("LRO LOLA 20 m/px and 40 m/px south polar LDEM (LRO-L-LOLA-4-GDR-V1.0, product v2.0, "
                     "NASA PDS Geosciences Node; Smith et al. 2017)")
 MAX_SLOPE_SAMPLES = 250000   # slope samples for "ellipse area over max slope"
+# Required Sun clearance by DEM level (ENGINE.md, "Sun clearance"), unless the user sets one:
+#   5 m PGDA tile: 0 deg. The tile was made for landing-site illumination studies (Barker et al.
+#     2021), and relief able to block panels 2 m above the ground spans at least one 5 m pixel,
+#     so it is resolved.
+#   coarse 20 m DEM: atan(1 m / 20 m) = 2.86 deg, a heuristic for unresolved sub-pixel relief.
+FINE_TILE_SUN_MARGIN_DEG = 0.0
+UNRESOLVED_RELIEF_M = 1.0
+LOW_SUN_MARGIN_TEXT = "Sun clearance below the terrain-data uncertainty margin (coarse DEM)"
+
+
+def coarse_sun_margin_deg(pixel_m: float) -> float:
+    """atan(UNRESOLVED_RELIEF_M / pixel_m) in degrees: 2.86 for the 20 m DEM."""
+    return math.degrees(math.atan(UNRESOLVED_RELIEF_M / float(pixel_m)))
+
+
+def auto_sun_margin_deg(on_fine_tile, coarse_pixel_m: float):
+    """Default required Sun clearance per point (array or bool in, same shape out)."""
+    return np.where(on_fine_tile, FINE_TILE_SUN_MARGIN_DEG, coarse_sun_margin_deg(coarse_pixel_m))
 BEARING_NAMES = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 # Distinctive spots picked from the terrain itself (descriptive labels, NOT official names).
@@ -225,7 +244,7 @@ def normalize_request(request: dict) -> dict:
     try:
         dt = datetime.fromisoformat(str(raw_t).strip().replace("Z", "+00:00"))
     except ValueError:
-        raise EngineError("invalid_request", "'landing_utc' must be ISO 8601, e.g. 2027-03-10T14:00:00Z") from None
+        raise EngineError("invalid_request", "'landing_utc' must be ISO 8601, e.g. 2027-10-12T14:00:00Z") from None
     dt = (dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc))
     dt = dt.replace(minute=0, second=0, microsecond=0)          # internal step: 1 hour
 
@@ -247,6 +266,8 @@ def normalize_request(request: dict) -> dict:
             "max_comm_gap_h": _num(limits, "max_comm_gap_h", *lim["max_comm_gap_h"]),
             "min_earth_pct": _num(limits, "min_earth_pct", *lim["min_earth_pct"]),
             "max_slope_deg": _num(limits, "max_slope_deg", *lim["max_slope_deg"]),
+            "min_sun_margin_deg": (None if limits.get("min_sun_margin_deg") is None else
+                                   _num(limits, "min_sun_margin_deg", *lim["min_sun_margin_deg"])),
         },
         "options": {
             "risk_margin": _num(opts, "risk_margin", 0.0, 0.9),
@@ -402,6 +423,7 @@ def _visibility(eng: _Engine, lat, lon, hor, sun_vec, earth_vec) -> dict:
     h_sun = horizon.interp_horizon(hor, sun_az)
     h_earth = horizon.interp_horizon(hor, earth_az)
     return {"sun_az": sun_az, "sun_el": sun_el, "h_sun": h_sun, "sun_lit": sun_el > h_sun,
+            "sun_margin": sun_el - h_sun,
             "earth_az": earth_az, "earth_el": earth_el, "h_earth": h_earth, "earth_visible": earth_el > h_earth}
 
 
@@ -423,6 +445,16 @@ def _curated_sites(eng: _Engine) -> list[dict]:
         if bool(eng.in_area(x, y)):
             sites.append(dict(s))
     return sites
+
+
+def _auto_margins(eng: _Engine) -> dict:
+    """Default required Sun clearance per DEM level, keyed by pixel size in meters (used when
+    limits.min_sun_margin_deg is null): 0 on the 5 m tile, atan(1 m / 20 m) on the 20 m DEM."""
+    out = {f"{eng.terrain.pixel_m:g}": FINE_TILE_SUN_MARGIN_DEG}
+    if eng.layered:
+        px = eng.terrain.layers[1].pixel_m
+        out[f"{px:g}"] = _r(coarse_sun_margin_deg(px), 3)
+    return out
 
 
 def get_meta() -> dict:
@@ -448,7 +480,7 @@ def get_meta() -> dict:
         "map": {"hillshade_url": HILLSHADE_URL, "hillshade_bounds_xy_m": eng.hillshade_bounds,
                 "crs_proj4": geo.crs_proj4()},
         "curated_sites": _curated_sites(eng),
-        "defaults": copy.deepcopy(DEFAULTS),
+        "defaults": {**copy.deepcopy(DEFAULTS), "min_sun_margin_auto_deg": _auto_margins(eng)},
         "input_limits": copy.deepcopy(INPUT_LIMITS),
     }
 
@@ -519,16 +551,32 @@ def _analyze(eng: _Engine, req: dict) -> dict:
     t_slope = float(eng.terrain.slope_at(tx, ty))
     t_slope_arr = np.array([t_slope])
 
+    # DEM level per point: 5 m tile, or the coarser 20 m polar DEM outside it. It sets the slope
+    # source flag and the default required Sun clearance.
+    fine_pts = eng.fine_layer(pts["x"], pts["y"])
+    target_fine = bool(eng.fine_layer(tx, ty))
+    coarse_px = float(eng.terrain.layers[1].pixel_m) if eng.layered else float(eng.terrain.pixel_m)
+    fine_px = float(eng.terrain.pixel_m)
+    user_margin = limits.get("min_sun_margin_deg")
+    if user_margin is None:
+        margin_req = auto_sun_margin_deg(fine_pts, coarse_px).astype(np.float64)
+        t_margin_req = float(auto_sun_margin_deg(target_fine, coarse_px))
+    else:
+        margin_req = np.full(n_pts, float(user_margin))
+        t_margin_req = float(user_margin)
+
     # ---- 4. delay loop: metrics + classification for every delay ---------------------
     risk_margin = opts["risk_margin"]
     delay_curve = []
     first = None
     for d in range(n_delay + 1):
         sl = slice(24 * d, 24 * d + mission_h)
-        m = metrics.point_metrics(vis["sun_lit"][:, sl], vis["earth_visible"][:, sl])
-        codes, fail, risk = metrics.classify(m, pts["slope"], limits, risk_margin, mission_h)
-        tm = metrics.point_metrics(tvis["sun_lit"][:, sl], tvis["earth_visible"][:, sl])
-        tcodes, tfail, trisk = metrics.classify(tm, t_slope_arr, limits, risk_margin, mission_h)
+        m = metrics.point_metrics(vis["sun_lit"][:, sl], vis["earth_visible"][:, sl],
+                                  sun_margin=vis["sun_margin"][:, sl])
+        codes, fail, risk = metrics.classify(m, pts["slope"], limits, risk_margin, mission_h, margin_req)
+        tm = metrics.point_metrics(tvis["sun_lit"][:, sl], tvis["earth_visible"][:, sl],
+                                   sun_margin=tvis["sun_margin"][:, sl])
+        tcodes, tfail, trisk = metrics.classify(tm, t_slope_arr, limits, risk_margin, mission_h, t_margin_req)
         n_viable = int(np.sum(codes == VIABLE))
         delay_curve.append({"delay_days": d, "survival_probability": _r(n_viable / n_pts, 3),
                             "target_viable": bool(tcodes[0] != NOT_VIABLE)})
@@ -550,6 +598,7 @@ def _analyze(eng: _Engine, req: dict) -> dict:
     if not math.isfinite(area_pct):
         area_pct = float(100.0 * np.mean(pts["slope"] > limits["max_slope_deg"]))
     sun_el0 = float(tvis["sun_el"][0, 0])
+    t_min_margin = float(tm["min_sun_margin"][0])          # NaN if the Sun is never lit
     lit0 = bool(tm["sun_at_touchdown"][0])
     sun_h, dark_h = float(tm["sun_hours"][0]), float(tm["longest_dark_h"][0])
     e_pct, gap_h = float(tm["earth_pct"][0]), float(tm["longest_comm_gap_h"][0])
@@ -574,6 +623,13 @@ def _analyze(eng: _Engine, req: dict) -> dict:
         {"id": "longest_dark", "label": "Longest darkness period", "value": _r(dark_h, 1), "unit": "h",
          "display": f"{dark_h:.0f} h", "limit_display": f"≤ {limits['max_dark_h']:g} h (battery)",
          "pass": bool(dark_h <= limits["max_dark_h"])},
+        {"id": "min_sun_margin", "label": "Minimum Sun clearance",
+         "value": (_r(t_min_margin, 3) if math.isfinite(t_min_margin) else None), "unit": "°",
+         "display": (f"{t_min_margin:.1f}°" if math.isfinite(t_min_margin) else "Never lit"),
+         "limit_display": (f"≥ {t_margin_req:.1f}° (set by user)" if user_margin is not None else
+                           f"≥ {t_margin_req:.1f}° (coarse {coarse_px:g} m DEM uncertainty)" if not target_fine else
+                           f"≥ {t_margin_req:.1f}° (5 m tile)"),
+         "pass": bool(math.isfinite(t_min_margin) and t_min_margin >= t_margin_req)},
         {"id": "earth_pct", "label": "Mission time with Earth visible", "value": _r(e_pct, 1), "unit": "%",
          "display": f"{e_pct:.0f}%", "limit_display": f"≥ {limits['min_earth_pct']:g}%",
          "pass": bool(e_pct >= limits["min_earth_pct"])},
@@ -595,12 +651,6 @@ def _analyze(eng: _Engine, req: dict) -> dict:
     checks = [tmx["pass"] for tmx in target_metrics if tmx["pass"] is not None]
 
     # ---- 6. points --------------------------------------------------------------------
-    # slope source per point: 5 m tile, or the coarser 20 m polar DEM outside it (underestimates
-    # local steepness; flagged per point and in the warnings)
-    fine_pts = eng.fine_layer(pts["x"], pts["y"])
-    target_fine = bool(eng.fine_layer(tx, ty))
-    coarse_px = float(eng.terrain.layers[1].pixel_m) if eng.layered else float(eng.terrain.pixel_m)
-    fine_px = float(eng.terrain.pixel_m)
     points = []
     for i in range(n_pts):
         points.append({
@@ -630,6 +680,8 @@ def _analyze(eng: _Engine, req: dict) -> dict:
         "earth_visible": [int(v) for v in tvis["earth_visible"][0, ms]],
         # display only (CONTRACT section 2): fraction of the solar disk above the horizon
         "sun_visible_fraction": r3(metrics.sun_visible_fraction(tvis["sun_el"][0, ms], tvis["h_sun"][0, ms])),
+        # v1.2: Sun elevation minus the terrain horizon at the Sun's azimuth (negative = below it)
+        "sun_margin_deg": r3(tvis["sun_margin"][0, ms]),
     }
     horizon_profile = {"az_step_deg": thz.az_step_deg, "elevation_deg": r3(thz.elevation_deg)}
 
@@ -657,6 +709,12 @@ def _analyze(eng: _Engine, req: dict) -> dict:
             "smooths features smaller than about 40 m, so slopes there underestimate the local steepness "
             "(points flagged with slope_coarse = true). Tip-over risk from boulders and small craters is not "
             "captured.")
+    n_low = int(np.sum((codes == RISKY) & risk["low_sun_margin"]))
+    if n_low:
+        warnings.append(
+            f"{n_low} of {n_pts} sample points are amber for '{LOW_SUN_MARGIN_TEXT}': the Sun clears the computed "
+            "horizon by less than the margin, so the terrain data are too coarse to guarantee sunlight there. "
+            "This is not a computed shadow.")
     if pts["mode"] == "on_the_fly":
         why = {"small_ellipse": "Small ellipse", "no_grid": "Precomputed horizon grid not available",
                "observer_height": "Observer height differs from the precomputed grid"}[pts["reason"]]
@@ -768,8 +826,14 @@ def _recommend(eng: _Engine, req: dict, frame: _Frame, p_current: float, sun_vec
     hor_all = np.concatenate([b["horizon"] for b in blocks])
     slope_all = np.concatenate([b["slope"] for b in blocks])
     vis = _visibility(eng, lat_all, lon_all, hor_all, sun_vec, earth_vec)
-    m = metrics.point_metrics(vis["sun_lit"], vis["earth_visible"])
-    codes, _fail, _risk = metrics.classify(m, slope_all, limits, opts["risk_margin"], mission_h)
+    fine_all = np.concatenate([eng.fine_layer(b["x"], b["y"]) for b in blocks])
+    if limits.get("min_sun_margin_deg") is None:
+        coarse_px = float(eng.terrain.layers[1].pixel_m) if eng.layered else float(eng.terrain.pixel_m)
+        req = auto_sun_margin_deg(fine_all, coarse_px).astype(np.float64)
+    else:
+        req = float(limits["min_sun_margin_deg"])
+    m = metrics.point_metrics(vis["sun_lit"], vis["earth_visible"], sun_margin=vis["sun_margin"])
+    codes, _fail, _risk = metrics.classify(m, slope_all, limits, opts["risk_margin"], mission_h, req)
     out, pos = [], 0
     for name, clat, clon, d_km, n in meta:
         p = float(np.mean(codes[pos:pos + n] == VIABLE))

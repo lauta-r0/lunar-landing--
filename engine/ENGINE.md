@@ -128,19 +128,29 @@ height 5312 m / 5322 m, slope 1.0 / 2.4 degrees, highest point of the horizon 4.
 2025-03-06 17:31 UTC (17:00 with the 1 h step), 10 days, 500 x 300 m ellipse from the intended site
 toward the actual one (369 m, azimuth 150.6 deg), plus a run on the actual site.
 
-| | Target = intended site | Target = actual touchdown |
-|---|---|---|
-| Survival probability | 1.00 (47/47) | 0.93 (42/45), 1.00 incl. risky |
-| Verdict | viable | viable |
-| Sun at touchdown | yes, 2.4 deg | yes, 2.4 deg |
-| Time until sunset | > 10 days | > 10 days |
+Each run without the Sun-clearance margin (`min_sun_margin_deg: 0`, the v1.1 behavior) and with
+the v1.2 default (2.86 deg here: both sites are on the 20 m DEM, see "Sun clearance" in section 5).
 
-**This does not match reality** (Athena lost power about 13 h after landing). The Sun was only
-1.6 deg above the DEM horizon during those 13 h, so relief about 0.3 m above the panels at 10 m, or
-0.7 m at 20 m, would hide the whole disk. Athena came to rest inside a shadowed crater; relief that
-small is below what the 20 m DEM resolves. Athena also lay on its side (panels near the ground, not
-facing the Sun), while LunaScout assumes an upright lander with panels 2 m up. A possible
-improvement: flag as risky a Sun-horizon margin under ~2-3 deg, or terrain from the coarse DEM.
+| | Intended, no margin | Intended, with margin | Actual, no margin | Actual, with margin |
+|---|---|---|---|---|
+| Survival probability | 1.00 (47/47) | 0.00 (0/47), 1.00 incl. risky | 0.93 (42/45) | 0.00 (0/45), 1.00 incl. risky |
+| Verdict | viable | risky (`low_sun_margin`) | viable | risky (`low_sun_margin`) |
+| Sun at touchdown | yes, 2.4 deg | yes, 2.4 deg | yes, 2.4 deg | yes, 2.4 deg |
+| Minimum Sun clearance | 1.6 deg | 1.6 deg (< 2.86) | 1.6 deg | 1.6 deg (< 2.86) |
+| Time until sunset | > 10 days | > 10 days | > 10 days | > 10 days |
+
+- **Without the margin the result does not match reality** (Athena lost power about 13 h after
+  landing): LunaScout says viable.
+- **With the margin the sites are amber**: the Sun clears the 20 m terrain by only 1.6 deg, less
+  than the terrain-data uncertainty margin, so LunaScout says the data are too coarse to guarantee
+  sunlight. It does not predict a shadow, and it flags the whole area at that date (45 of 45
+  points), not Athena's exact spot.
+- Why the shadow is not computed: relief about 0.3 m above the panels at 10 m, or 0.7 m at 20 m,
+  would hide the whole disk; Athena came to rest inside a shadowed crater, and relief that small is
+  below what the 20 m DEM resolves. Athena also lay on its side (panels near the ground, not facing
+  the Sun), while LunaScout assumes an upright lander with panels 2 m up.
+- The margin comes from the DEM resolution, not from Athena; in fairness, the 1.6 deg clearance
+  of the first replay was already known when the rule was chosen.
 
 ### How to regenerate the large files
 
@@ -256,6 +266,44 @@ the ray spacing on a 30 degree slope is about 0.17 degrees; from the nearest-pix
    "Ellipse area over max slope" samples the finest slope raster on a 5 m lattice inside the ellipse.
 9. Identical requests are served from a 32-entry cache.
 
+### Sun clearance (`low_sun_margin`, CONTRACT v1.2)
+
+The horizon is only as good as the terrain data. A point is **risky** with reason `low_sun_margin`
+("Sun clearance below the terrain-data uncertainty margin (coarse DEM)") when, during the **lit
+hours** of the mission, the smallest clearance `sun_el - horizon_at_sun` is below the required
+clearance. It never makes a point not_viable. The UI should explain the amber as "data too coarse to
+guarantee sunlight", not as a computed shadow.
+
+Required clearance, unless the user sets `limits.min_sun_margin_deg` (which then applies everywhere):
+
+| DEM level of the point | Default | Why |
+|---|---|---|
+| 5 m PGDA tile | **0 deg** | The tile was produced for landing-site illumination studies (Barker et al. 2021). Relief able to block panels 2 m above the ground is at least 2 m high at a few meters' distance, so it spans at least one 5 m pixel and is resolved by the DEM. |
+| 20 m polar DEM (coarse) | **2.86 deg** | Heuristic for unresolved sub-pixel relief: the elevation angle of about 1 m of relief one pixel away, `atan(dh / pixel) = atan(1 m / 20 m)`. |
+
+For reference, the same formula on the 5 m tile gives `atan(1 m / 5 m) = 11.31 deg`, more than the
+highest Sun anywhere in coverage (6.1 to 6.8 deg): it would make every lit point amber, which is why
+it is not used there (the formula grows as the pixel shrinks, while finer data leave less relief
+unresolved). The automatic values are in `get_meta().defaults.min_sun_margin_auto_deg`.
+
+Window: all lit hours of the mission, not only the first 24 h. That is the same window as every
+other rule of CONTRACT 4.4, and an unresolved obstacle can cut sunlight at any lit hour (the extra
+darkness it would cause is not counted by `longest_dark_h`). Unlit hours are excluded because
+darkness already penalizes them.
+
+Effect on the default request (2027-10-12T14:00Z, viable / risky / not viable):
+
+| Target | No margin | With the v1.2 default |
+|---|---|---|
+| Summit plateau (5 m tile) | 171 / 30 / 183 (P 0.445) | 171 / 30 / 183 (unchanged) |
+| Mons Mouton DEM center (5 m tile) | 78 / 47 / 246 (P 0.21) | 78 / 47 / 246 (unchanged) |
+| Western bench (5 m tile) | 138 / 69 / 175 (P 0.361) | 138 / 69 / 175 (unchanged) |
+| IM-2 actual touchdown (20 m DEM) | 168 / 18 / 5 (P 0.88) | 12 / 174 / 5 (P 0.063) |
+
+New fields: target metric `min_sun_margin` ("Minimum Sun clearance", degrees, pass if it is at least
+the required clearance; `checks_total` is 8) and `timeseries.sun_margin_deg` (Sun elevation minus
+the horizon at the Sun's azimuth, every hour).
+
 Fields added in CONTRACT v1.1:
 - `timeseries.sun_visible_fraction`, the fraction of the solar disk above the horizon, for display.
   Classification uses the center-of-disk rule only.
@@ -320,12 +368,16 @@ descriptive, not official names. The two IM-2 entries are real landing sites (so
   trajectory constraints.
 - Recommendations use a coarser sample than the main analysis, so their probability is comparable
   to, not identical with, a full run on that target.
-- DEM height error (0.3 to 0.5 m RMS on the tile) is not propagated; the 100 PGDA clones could be
-  used for that.
+- DEM height error (0.3 to 0.5 m RMS on the tile) is not propagated. **Future work:** quantify the
+  horizon uncertainty on the 5 m tile with the 100 PGDA DEM clones (recompute the horizon on each
+  clone and use the spread as a per-point Sun-clearance margin instead of 0 deg).
+- The 2.86 deg margin on the 20 m DEM is a heuristic. In low-Sun seasons it turns most of the IM-2
+  area amber (12 of 191 points stay green on 2027-10-12): that reflects the coarse data, not a
+  computed shadow.
 
 ## 8. Tests
 
-`python -m pytest engine/tests -q` : **51 passed** (39 s, including the 10 ephemeris tests of the
+`python -m pytest engine/tests -q` : **52 passed** (38 s, including the 10 ephemeris tests of the
 ephemeris agent; the tests that need the real DEM are skipped when it is not downloaded).
 
 | Test | Expected | Result |
@@ -343,6 +395,7 @@ ephemeris agent; the tests that need the real DEM are skipped when it is not dow
 | Far-field wall: 3 km high at 40 km, only in the coarse DEM | invisible with the fine tile alone; atan2(H - h - D^2/2R, D) = 3.6 degrees with both levels | within 0.15 degrees at all azimuths |
 | Ray length | rays stop at 100 km | passes |
 | Grid seam | fine 50 m + coarse 100 m grids sampled at one common spacing | 220 + 180 points, exactly the 100 m lattice on both sides |
+| Sun clearance | low margin in a lit hour -> risky `low_sun_margin` only; unlit hours ignored; margin 0 disables it; `min_sun_margin` = min of `sun_margin_deg` over lit hours | passes |
 | Real data | composite = 5 m DEM inside the tile; IM-2 sites on the 20 m level; no step across the north seam | passes |
 
 ## 9. Timings

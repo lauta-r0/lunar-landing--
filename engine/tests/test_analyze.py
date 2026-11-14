@@ -18,8 +18,8 @@ from engine.grid import HorizonGrid
 from engine.tests.conftest import CENTER_XY, make_terrain, real_dem_available
 
 CLASSES = {"viable", "risky", "not_viable"}
-REASONS = {"slope", "darkness", "comms_gap", "earth_time", "sunset", "no_sun_at_touchdown"}
-METRIC_IDS = ["sun_at_touchdown", "sun_hours", "longest_dark", "earth_pct", "longest_comm_gap",
+REASONS = {"slope", "darkness", "comms_gap", "earth_time", "sunset", "no_sun_at_touchdown", "low_sun_margin"}
+METRIC_IDS = ["sun_at_touchdown", "sun_hours", "longest_dark", "min_sun_margin", "earth_pct", "longest_comm_gap",
               "hours_until_sunset", "hours_until_earthset", "area_over_slope", "delay_tolerance"]
 
 
@@ -87,7 +87,7 @@ def check_contract_shape(r: dict, req: dict):
                 "summary", "target_metrics", "points", "timeseries", "horizon_profile", "delay_curve",
                 "delay_tolerance_days", "recommendations", "map", "warnings", "sources"]:
         assert key in r, key
-    assert r["schema_version"] == "1.1" and isinstance(r["is_sample"], bool)
+    assert r["schema_version"] == "1.2" and isinstance(r["is_sample"], bool)
     assert r["computed_utc"].endswith("Z") and isinstance(r["compute_ms"], int)
     assert r["coverage"]["in_coverage"] is True and isinstance(r["coverage"]["dem_name"], str)
     for key in ["lat", "lon", "x_m", "y_m", "elevation_m", "slope_deg"]:
@@ -99,7 +99,7 @@ def check_contract_shape(r: dict, req: dict):
     assert s["survival_probability"] == round(s["viable"] / s["n_points"], 3)
     assert s["survival_probability_incl_risky"] == round((s["viable"] + s["risky"]) / s["n_points"], 3)
     assert s["verdict"] in CLASSES
-    assert s["checks_total"] == 7 and 0 <= s["checks_passed"] <= 7
+    assert s["checks_total"] == 8 and 0 <= s["checks_passed"] <= 8
 
     assert [m["id"] for m in r["target_metrics"]] == METRIC_IDS
     for m in r["target_metrics"]:
@@ -126,8 +126,17 @@ def check_contract_shape(r: dict, req: dict):
     ts = r["timeseries"]
     assert ts["n"] == mission_h and ts["step_h"] == 1 and ts["t0_utc"] == r["inputs"]["landing_utc"]
     for key in ["sun_az_deg", "sun_el_deg", "horizon_at_sun_deg", "sun_lit",
-                "earth_az_deg", "earth_el_deg", "horizon_at_earth_deg", "earth_visible"]:
+                "earth_az_deg", "earth_el_deg", "horizon_at_earth_deg", "earth_visible",
+                "sun_visible_fraction", "sun_margin_deg"]:
         assert len(ts[key]) == mission_h, key
+    # v1.2: margin = Sun elevation - horizon at the Sun; the target metric is its minimum over lit hours
+    for e, h, mg in zip(ts["sun_el_deg"], ts["horizon_at_sun_deg"], ts["sun_margin_deg"]):
+        assert abs((e - h) - mg) < 0.002
+    lit_margins = [mg for mg, lt in zip(ts["sun_margin_deg"], ts["sun_lit"]) if lt]
+    if lit_margins:
+        assert abs(by_id["min_sun_margin"]["value"] - min(lit_margins)) < 0.002
+    else:
+        assert by_id["min_sun_margin"]["value"] is None and by_id["min_sun_margin"]["pass"] is False
     assert set(ts["sun_lit"]) <= {0, 1} and set(ts["earth_visible"]) <= {0, 1}
     assert all(0 <= a < 360.0001 for a in ts["sun_az_deg"])
     lit = [int(e > h) for e, h in zip(ts["sun_el_deg"], ts["horizon_at_sun_deg"])]
@@ -195,7 +204,7 @@ def test_options_are_optional_and_defaults_apply(engine_grid):
     lat, lon = geo.xy_to_latlon(*CENTER_XY)
     r = az.analyze({"target": {"lat": float(lat), "lon": float(lon)}})
     assert r["inputs"]["mission_days"] == 7 and r["inputs"]["options"]["delay_days_max"] == 30
-    assert r["inputs"]["landing_utc"] == "2027-03-10T14:00:00Z"
+    assert r["inputs"]["landing_utc"] == "2027-10-12T14:00:00Z"
     assert len(r["delay_curve"]) == 31
 
 
@@ -209,7 +218,14 @@ def test_meta_shape(engine_grid):
     assert abs(cov["center_lat"] + 85.42658) < 1e-4 and abs(cov["center_lon"] - 31.74276) < 1e-4
     assert meta["ephemeris_range_utc"] == ["2025-01-01T00:00:00Z", "2028-12-31T23:00:00Z"]
     assert meta["curated_sites"][0]["id"] == "mons_mouton_center"
-    assert meta["defaults"]["limits"] == {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8}
+    assert meta["defaults"]["limits"] == {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8,
+                                          "min_sun_margin_deg": None}
+    auto = meta["defaults"]["min_sun_margin_auto_deg"]           # v1.2: atan(1 m / pixel) per DEM level
+    import math
+    # 0 on the fine tile; atan(1 m / pixel) on a coarse level (only present with the regional DEM)
+    fine_key = min(auto, key=float)
+    assert auto[fine_key] == 0.0
+    assert all(abs(v - math.degrees(math.atan(1.0 / float(px)))) < 1e-3 for px, v in auto.items() if px != fine_key)
     assert meta["map"]["hillshade_url"] == "/api/static/hillshade.png" and "+proj=stere" in meta["map"]["crs_proj4"]
 
 

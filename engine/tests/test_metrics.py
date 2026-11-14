@@ -93,3 +93,24 @@ def test_sun_visible_fraction():
     assert np.allclose(f, [1.0, 0.5, 0.0, 1.0, 0.0], atol=1e-9)
     mid = metrics.sun_visible_fraction(0.1, 0.0)
     assert 0.5 < float(mid) < 1.0
+
+
+def test_low_sun_margin_is_risky_never_not_viable():
+    """Sun clearance below the required margin during lit hours -> risky (low_sun_margin) only."""
+    lit = np.ones((3, 24), dtype=bool)
+    lit[2] = False                                   # never lit: no margin, darkness decides
+    earth = np.ones((3, 24), dtype=bool)
+    margin = np.full((3, 24), 5.0)
+    margin[1, 7] = 1.0                               # one lit hour only 1 deg above the horizon
+    margin[0, 3] = -2.0                              # an unlit hour does not count (lit[0,3] set False)
+    lit[0, 3] = False
+    m = metrics.point_metrics(lit, earth, sun_margin=margin)
+    assert m["min_sun_margin"][0] == 5.0 and m["min_sun_margin"][1] == 1.0 and np.isnan(m["min_sun_margin"][2])
+    limits = {"max_slope_deg": 8, "max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50}
+    codes, fail, risk = metrics.classify(m, np.zeros(3), limits, 0.2, 24, sun_margin_req=np.array([2.86, 2.86, 2.86]))
+    assert list(risk["low_sun_margin"]) == [False, True, False]
+    assert codes[1] == metrics.RISKY and metrics.reasons_for(1, codes, fail, risk) == ["low_sun_margin"]
+    assert not any(fail[r][1] for r in fail)         # never a failure reason
+    # margin 0 disables the rule (a lit hour always has a positive margin)
+    codes0, _f, risk0 = metrics.classify(m, np.zeros(3), limits, 0.2, 24, sun_margin_req=0.0)
+    assert not risk0["low_sun_margin"].any()

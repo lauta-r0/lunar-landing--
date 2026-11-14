@@ -4,10 +4,12 @@
     python scripts/athena_replay.py              # needs the real ephemeris (engine/ephemeris.py + npz)
     python scripts/athena_replay.py --stdout     # print the report instead of writing the file
 
-Two runs of engine.analyze.analyze():
+Two targets, each run twice:
     A. target = intended site, ellipse 500 x 300 m with its major axis pointing at the actual
        touchdown (369 m away), so the actual site is inside the ellipse;
-    B. target = actual touchdown (same ellipse size and orientation).
+    B. target = actual touchdown (same ellipse size and orientation);
+    each without the Sun-clearance margin (min_sun_margin_deg = 0, the v1.1 behavior) and with the
+    default margin (v1.2: 0 deg on the 5 m tile, 2.86 deg on the coarse 20 m DEM).
 Landing 2025-03-06T17:31:00Z (floored to 17:00 by the 1 h time step), mission 10 days.
 
 The report is written only with the real JPL Horizons ephemeris. With the synthetic stub
@@ -50,14 +52,18 @@ def run() -> dict:
     ellipse = {"semi_major_m": SEMI_MAJOR_M, "semi_minor_m": SEMI_MINOR_M, "azimuth_deg": round(bearing, 2)}
     base = {"landing_utc": LANDING_UTC, "mission_days": MISSION_DAYS, "ellipse": ellipse,
             "options": {"include_recommendations": True}}
-    ra = az.analyze(dict(base, target=INTENDED))
-    rb = az.analyze(dict(base, target=ACTUAL))
-    # the sample point of run A nearest to the actual touchdown
+    out = {"distance_m": dist, "bearing_deg": bearing, "ellipse": ellipse}
     ax, ay = geo.latlon_to_xy(ACTUAL["lat"], ACTUAL["lon"])
-    d = [float(np.hypot(p["x_m"] - ax, p["y_m"] - ay)) for p in ra["points"]]
-    nearest = ra["points"][int(np.argmin(d))]
-    return {"distance_m": dist, "bearing_deg": bearing, "ellipse": ellipse, "A": ra, "B": rb,
-            "nearest_point_A": nearest, "nearest_point_dist_m": float(min(d)), "is_sample": ra["is_sample"]}
+    for suffix, margin in (("0", 0.0), ("", None)):          # "0": no margin; "": default margin
+        lim = {"min_sun_margin_deg": margin}
+        ra = az.analyze(dict(base, target=INTENDED, limits=lim))
+        rb = az.analyze(dict(base, target=ACTUAL, limits=lim))
+        d = [float(np.hypot(p["x_m"] - ax, p["y_m"] - ay)) for p in ra["points"]]
+        out["A" + suffix], out["B" + suffix] = ra, rb
+        out["nearest_point_A" + suffix] = ra["points"][int(np.argmin(d))]
+        out["nearest_point_dist_m"] = float(min(d))
+    out["is_sample"] = out["A"]["is_sample"]
+    return out
 
 
 def _metric(r, mid):
@@ -66,32 +72,55 @@ def _metric(r, mid):
 
 def _flagged(r) -> str:
     s = r["summary"]
-    if s["verdict"] == "not_viable" or s["survival_probability"] < 0.5:
-        return "yes"
+    if s["verdict"] == "not_viable":
+        return "yes (not viable)"
     if s["verdict"] == "risky":
-        return "partly (risky)"
+        return "yes, as amber (risky)"
+    if s["survival_probability"] < 0.5:
+        return "partly (target viable, P < 0.5)"
     return "no"
 
 
 def _honest(res: dict) -> list[str]:
     """Plain-language comparison with what happened, computed from run B (actual touchdown)."""
-    b = res["B"]
+    b0, b = res["B0"], res["B"]
     ts = b["timeseries"]
     el = np.array(ts["sun_el_deg"])
-    hz = np.array(ts["horizon_at_sun_deg"])
-    margin13 = float((el - hz)[:13].min())                 # Athena operated ~13 h
+    margin = np.array(ts["sun_margin_deg"])
+    margin13 = float(margin[:13].min())                     # Athena operated ~13 h
     disk = 0.2665                                           # solar angular radius, deg
-    rims = ", ".join(f"{np.tan(np.radians(margin13 + disk)) * d:.1f} m at {d} m"
-                     for d in (10, 20, 50))
-    flagged = _flagged(b) != "no"
+    rims = ", ".join(f"{np.tan(np.radians(margin13 + disk)) * d:.1f} m at {d} m" for d in (10, 20, 50))
+    req = _metric(b, "min_sun_margin")
     out = []
-    if flagged:
-        out.append("- **LunaScout flags the actual touchdown as risky / not viable**, consistent with the outcome.")
-    else:
+    if _flagged(b0) == "no":
         out.append(
-            "- **This does not match reality.** LunaScout rates the actual touchdown as "
-            f"**{b['summary']['verdict']}** (survival probability {b['summary']['survival_probability']:.2f}), "
+            "- **Without the margin (v1.1) the result does not match reality.** LunaScout rates the actual "
+            f"touchdown **{b0['summary']['verdict']}** (survival probability {b0['summary']['survival_probability']:.2f}), "
             "but Athena lost power about 13 h after landing.")
+    else:
+        out.append("- Without the margin (v1.1) LunaScout already flags the actual touchdown "
+                   f"({b0['summary']['verdict']}).")
+    if _flagged(b) != "no":
+        out.append(
+            f"- **With the default margin (v1.2) the actual touchdown is {b['summary']['verdict']}** "
+            f"(survival probability {b['summary']['survival_probability']:.2f}, "
+            f"{b['summary']['survival_probability_incl_risky']:.2f} including risky): minimum Sun clearance "
+            f"{req['display']} against {req['limit_display'].replace('≥ ', '')}. The amber points mean *Sun clearance "
+            "below the terrain-data uncertainty margin (coarse DEM)*: the data are too coarse to guarantee sunlight. "
+            "It is not a computed shadow, and LunaScout still does not say the mission would end.")
+    else:
+        out.append(f"- With the default margin (v1.2) the result does not change ({b['summary']['verdict']}).")
+    n_amber = sum(p["class"] == "risky" for p in b["points"])
+    out.append(
+        f"- The flag is not specific to the touchdown spot: {n_amber} of {len(b['points'])} points of ellipse B "
+        "are amber, because the whole area sees a Sun only a few degrees up and is evaluated on the coarse DEM. "
+        "LunaScout says \"the data cannot guarantee sunlight anywhere here\", which is the right caution, not a "
+        "prediction that Athena's exact spot was in shadow.")
+    out.append(
+        "- The margin comes from the DEM resolution, not from Athena: 2.86 deg = atan(1 m / 20 m), the angle of "
+        "1 m of unresolved relief one 20 m pixel away (ENGINE.md, \"Sun clearance\"). In fairness, the 1.6 deg "
+        "clearance of the earlier replay was already known when the rule was chosen; the formula itself was "
+        "fixed before re-running.")
     out.append(
         f"- The real ephemeris and the 20/40 m terrain put the Sun only **{margin13:.1f} deg above the DEM horizon** "
         f"during the first 13 h (Sun elevation {el[:13].min():.1f}-{el[:13].max():.1f} deg). To hide the whole solar "
@@ -102,10 +131,6 @@ def _honest(res: dict) -> list[str]:
     out.append(
         "- Athena also ended up on its side, so its solar panels were close to the ground and not facing the Sun. "
         "LunaScout assumes an upright lander with panels 2 m above the terrain.")
-    out.append(
-        "- What LunaScout does show: a very low Sun (a margin of 1-2 deg) at a site evaluated on 20 m terrain. "
-        "A low-Sun margin is itself a warning sign at the pole. A possible improvement is a \"risky\" flag when "
-        "the Sun-horizon margin is under ~2-3 deg, or wherever the slope and terrain come from the coarse DEM.")
     return out
 
 
@@ -137,8 +162,11 @@ def report(res: dict) -> str:
         "",
         "## Results",
         "",
-        "| | Run A: target = intended site | Run B: target = actual touchdown |",
-        "|---|---|---|",
+        "Without margin = `min_sun_margin_deg: 0` (v1.1 behavior). With margin = default of v1.2 (2.86 deg here, "
+        "because both sites are on the coarse 20 m DEM).",
+        "",
+        "| | A: intended, no margin | A: intended, with margin | B: actual, no margin | B: actual, with margin |",
+        "|---|---|---|---|---|",
     ]
     for label, fn in [
         ("Survival probability (viable / points)", lambda r: f"{r['summary']['survival_probability']:.3f} "
@@ -149,14 +177,17 @@ def report(res: dict) -> str:
         ("Time until sunset (target)", lambda r: _metric(r, "hours_until_sunset")["display"]),
         ("Longest darkness (target)", lambda r: _metric(r, "longest_dark")["display"]),
         ("Earth visible (target)", lambda r: _metric(r, "earth_pct")["display"]),
+        ("Minimum Sun clearance (target)", lambda r: f"{_metric(r, 'min_sun_margin')['display']} "
+                                                      f"({_metric(r, 'min_sun_margin')['limit_display']})"),
         ("Target slope", lambda r: f"{r['target']['slope_deg']:.1f} deg ({r['target']['slope_dem_m']:.0f} m DEM)"),
         ("Would LunaScout have flagged the risk?", _flagged),
     ]:
-        lines.append(f"| {label} | {fn(a)} | {fn(b)} |")
+        lines.append(f"| {label} | {fn(res['A0'])} | {fn(a)} | {fn(res['B0'])} | {fn(b)} |")
     lines += [
         "",
         f"Sample point of run A nearest to the actual touchdown ({res['nearest_point_dist_m']:.0f} m from it): class "
-        f"**{n['class']}**, reasons {n['reasons'] or 'none'}, lit at touchdown: {n['sun_at_touchdown']}, "
+        f"**{res['nearest_point_A0']['class']}** without margin, **{n['class']}** with margin "
+        f"(reasons {n['reasons'] or 'none'}); lit at touchdown: {n['sun_at_touchdown']}, "
         f"hours until sunset {n['hours_until_sunset']:.0f}, slope {n['slope_deg']:.1f} deg "
         f"({'coarse 20 m' if n['slope_coarse'] else '5 m'}).",
         "",
@@ -169,7 +200,7 @@ def report(res: dict) -> str:
         "dynamics or the lander's attitude after touchdown (Athena lay on its side, so its panels could not "
         "face the Sun even where the ground was lit).",
         "",
-        "## Warnings returned by the engine (run A)",
+        "## Warnings returned by the engine (run A, with margin)",
         "",
     ] + [f"- {w}" for w in a["warnings"]] + [
         "",
@@ -187,7 +218,8 @@ def main() -> int:
     res = run()
     text = report(res)
     if args.json:
-        Path(args.json).write_text(json.dumps({k: res[k] for k in ("A", "B")}, indent=1), encoding="utf-8")
+        Path(args.json).write_text(json.dumps({k: res[k] for k in ("A0", "B0", "A", "B")}, indent=1),
+                                   encoding="utf-8")
     if args.stdout or res["is_sample"]:
         if res["is_sample"] and not args.stdout:
             print("Synthetic ephemeris loaded: NOT writing docs/athena_replay.md. Report below is NOT real.\n")
