@@ -1,6 +1,14 @@
-# LunaScout — Shared Contract (v1.1)
+# LunaScout — Shared Contract (v1.2)
 
-> **Changes in v1.1 (2026-11-14, terrain engine / Agent 03)** — `schema_version` is now `"1.1"`.
+> **Changes in v1.2 (2026-11-14, terrain engine / Agent 03)** — `schema_version` is now `"1.2"`.
+> - New limit `limits.min_sun_margin_deg` ("Required Sun clearance", degrees, optional, `null` by default). `null` = automatic per point: **0° on the 5 m/px tile**, **2.86° = atan(1 m / 20 m) on the coarse 20 m/px DEM** (heuristic for unresolved sub-pixel relief). A number overrides it everywhere. `get_meta().defaults.min_sun_margin_auto_deg` gives the automatic values (`{"5": 0.0, "20": 2.862}`).
+> - New risky reason `low_sun_margin`: "Sun clearance below the terrain-data uncertainty margin (coarse DEM)". It means the data are too coarse to guarantee sunlight, not a computed shadow. It never makes a point not_viable.
+> - New target metric `min_sun_margin` ("Minimum Sun clearance", unit `°`, pass if ≥ the required clearance); `checks_total` is now 8.
+> - New field `timeseries.sun_margin_deg` (length `n`): Sun elevation minus the terrain horizon at the Sun's azimuth, degrees (negative = Sun hidden).
+> - Default `landing_utc` is now **`2027-10-12T14:00:00Z`** (2027-03-10 is a dark period at Mons Mouton: every point was not viable).
+>
+
+> **Changes in v1.1 (2026-11-14, terrain engine / Agent 03)** — `schema_version` was `"1.1"`.
 > - New field `timeseries.sun_visible_fraction`: array of length `n`, values 0–1 (fraction of the solar disk above the terrain horizon, for display; classification still uses the center-of-disk rule).
 > - New optional fields: `points[].slope_dem_m` and `target.slope_dem_m` (pixel size of the DEM the slope comes from: 5 or 20), `points[].slope_coarse` and `target.slope_coarse` (true when the slope comes from the coarser 20 m/px DEM, which underestimates local steepness). `coverage.message` is a string when the target is outside the 5 m/px tile.
 > - Terrain: the 5 m/px Site20v2 tile plus the LOLA 20/40 m/px south polar DEM (PDS) outside it and for the far-field horizon (out to 100 km). Analyzable area: x 61–85 km, y 106–148 km (lat ≈ −86.0 to −84.6), which includes the IM-2 Athena sites.
@@ -17,7 +25,7 @@ LunaScout is a single-screen web app for the lunar south pole. A lander never to
 |---|---|
 | Latitude | Degrees, south negative (`-85.47`) |
 | Longitude | Degrees **east-positive**, range [-180, 180] |
-| Time | UTC, ISO 8601 with `Z` (`2027-03-10T14:00:00Z`). Internal sampling step: **1 hour** |
+| Time | UTC, ISO 8601 with `Z` (`2027-10-12T14:00:00Z`). Internal sampling step: **1 hour** |
 | Azimuth | Degrees, **clockwise from local north**, [0, 360) |
 | Elevation | Degrees above the local horizontal plane (plane perpendicular to the local radius of the reference sphere) |
 | Distances / heights | Meters. Heights are relative to the **1,737,400 m reference sphere** (LOLA convention) |
@@ -40,13 +48,13 @@ LunaScout is a single-screen web app for the lunar south pole. A lander never to
 Base path: `/api`. JSON only. CORS enabled for the frontend origin(s) and `http://localhost:*`.
 
 ### 4.1 `GET /api/health`
-`200 {"status":"ok","engine_ready":true,"schema_version":"1.1"}`
+`200 {"status":"ok","engine_ready":true,"schema_version":"1.2"}`
 
 ### 4.2 `GET /api/meta`
 Lets the frontend set defaults, limits and the map.
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "coverage": {
     "dem_name": "LOLA 5 m/px LDEM — Site20v2 (Mons Mouton / Leibnitz beta plateau) + LOLA 20 m/px polar LDEM (...) + LOLA 40 m/px polar LDEM (...)",
     "bounds_xy_m": [-0.0, -0.0, 0.0, 0.0],
@@ -66,16 +74,17 @@ Lets the frontend set defaults, limits and the map.
     {"id": "im2_athena_actual", "name": "IM-2 Athena actual touchdown", "lat": -84.7906, "lon": 29.1957}
   ],
   "defaults": {
-    "landing_utc": "2027-03-10T14:00:00Z",
+    "landing_utc": "2027-10-12T14:00:00Z",
     "mission_days": 7,
     "ellipse": {"semi_major_m": 1000, "semi_minor_m": 600, "azimuth_deg": 0},
-    "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8},
-    "options": {"risk_margin": 0.2, "delay_days_max": 30, "include_recommendations": true, "observer_height_m": 2.0}
+    "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8, "min_sun_margin_deg": null},
+    "options": {"risk_margin": 0.2, "delay_days_max": 30, "include_recommendations": true, "observer_height_m": 2.0},
+    "min_sun_margin_auto_deg": {"5": 0.0, "20": 2.862}
   },
   "input_limits": {
     "mission_days": [1, 30], "semi_major_m": [50, 5000], "semi_minor_m": [50, 5000],
     "max_dark_h": [1, 400], "max_comm_gap_h": [1, 400], "min_earth_pct": [0, 100], "max_slope_deg": [1, 30],
-    "delay_days_max": [0, 60]
+    "delay_days_max": [0, 60], "min_sun_margin_deg": [0, 15]
   }
 }
 ```
@@ -86,10 +95,10 @@ Lets the frontend set defaults, limits and the map.
 ```json
 {
   "target": {"lat": -85.47628, "lon": 31.39691},
-  "landing_utc": "2027-03-10T14:00:00Z",
+  "landing_utc": "2027-10-12T14:00:00Z",
   "mission_days": 7,
   "ellipse": {"semi_major_m": 1000, "semi_minor_m": 600, "azimuth_deg": 0},
-  "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8},
+  "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8, "min_sun_margin_deg": null},
   "options": {"risk_margin": 0.2, "delay_days_max": 30, "include_recommendations": true, "observer_height_m": 2.0}
 }
 ```
@@ -97,13 +106,14 @@ Lets the frontend set defaults, limits and the map.
 - `limits.max_dark_h`: longest continuous period without sunlight the lander survives (battery).
 - `limits.max_comm_gap_h`: longest continuous period without direct-to-Earth visibility tolerated.
 - `limits.min_earth_pct`: minimum % of mission hours with Earth visible.
+- `limits.min_sun_margin_deg` (v1.2, optional): required Sun clearance above the terrain horizon during the lit hours of the mission. `null` or omitted = automatic by DEM level (0° on the 5 m tile, 2.86° on the 20 m DEM); a number applies to every point.
 - `options.risk_margin`: fraction of a limit that counts as "close to failing" (0.2 = within 20% of a limit → risky).
 - `options` may be omitted (defaults apply).
 
 **Response 200**
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "is_sample": false,
   "computed_utc": "2026-11-15T14:03:22Z",
   "compute_ms": 1840,
@@ -118,7 +128,7 @@ Lets the frontend set defaults, limits and the map.
     "viable": 64, "risky": 34, "not_viable": 20,
     "survival_probability": 0.542,
     "survival_probability_incl_risky": 0.831,
-    "checks_passed": 5, "checks_total": 7,
+    "checks_passed": 6, "checks_total": 8,
     "verdict": "risky"
   },
 
@@ -126,6 +136,7 @@ Lets the frontend set defaults, limits and the map.
     {"id": "sun_at_touchdown",   "label": "Sun at touchdown",          "value": 1,     "unit": "bool", "display": "Yes · el 1.4°", "limit_display": "Required",                 "pass": true},
     {"id": "sun_hours",          "label": "Hours of sunlight",         "value": 121.0, "unit": "h",    "display": "121 h / 168 h", "limit_display": "≥ 60% of mission",         "pass": true},
     {"id": "longest_dark",       "label": "Longest darkness period",   "value": 41.0,  "unit": "h",    "display": "41 h",          "limit_display": "≤ 50 h (battery)",         "pass": true},
+    {"id": "min_sun_margin",     "label": "Minimum Sun clearance",     "value": 2.9,   "unit": "°",    "display": "2.9°",          "limit_display": "≥ 0.0° (5 m tile)",        "pass": true},
     {"id": "earth_pct",          "label": "Mission time with Earth visible", "value": 58.0, "unit": "%", "display": "58%",        "limit_display": "≥ 50%",                    "pass": true},
     {"id": "longest_comm_gap",   "label": "Longest comms gap",         "value": 96.0,  "unit": "h",    "display": "4 d 0 h",       "limit_display": "≤ 72 h",                   "pass": false},
     {"id": "hours_until_sunset", "label": "Time until sunset",         "value": 78.0,  "unit": "h",    "display": "3 d 6 h",       "limit_display": "≥ mission (7 d 0 h)",      "pass": false},
@@ -147,12 +158,12 @@ Lets the frontend set defaults, limits and the map.
   ],
 
   "timeseries": {
-    "t0_utc": "2027-03-10T14:00:00Z",
+    "t0_utc": "2027-10-12T14:00:00Z",
     "step_h": 1,
     "n": 168,
     "sun_az_deg": [], "sun_el_deg": [], "horizon_at_sun_deg": [], "sun_lit": [],
     "earth_az_deg": [], "earth_el_deg": [], "horizon_at_earth_deg": [], "earth_visible": [],
-    "sun_visible_fraction": []
+    "sun_visible_fraction": [], "sun_margin_deg": []
   },
 
   "horizon_profile": {"az_step_deg": 1.0, "elevation_deg": []},
@@ -182,10 +193,11 @@ Lets the frontend set defaults, limits and the map.
 
 Field rules:
 - `points[].class` ∈ `"viable" | "risky" | "not_viable"`.
-- `points[].reasons` ⊆ `["slope", "darkness", "comms_gap", "earth_time", "sunset", "no_sun_at_touchdown"]`. It lists the criteria that failed (not_viable) or are within the risk margin (risky).
+- `points[].reasons` ⊆ `["slope", "darkness", "comms_gap", "earth_time", "sunset", "no_sun_at_touchdown", "low_sun_margin"]`. It lists the criteria that failed (not_viable) or are within the risk margin (risky).
 - `summary.verdict` ∈ `"viable" | "risky" | "not_viable"`. It is the target point's class.
 - `target_metrics[].pass` is `true`, `false` or `null` (informational). `checks_passed` and `checks_total` count only non-null metrics.
-- `timeseries` arrays all have length `n` = `mission_days * 24`, for the **target point**. `sun_lit` and `earth_visible` are 0/1 integers. `sun_visible_fraction` (v1.1) is a float 0–1 per hour (display only).
+- `timeseries` arrays all have length `n` = `mission_days * 24`, for the **target point**. `sun_lit` and `earth_visible` are 0/1 integers. `sun_visible_fraction` (v1.1) is a float 0–1 per hour (display only). `sun_margin_deg` (v1.2) is the Sun elevation minus the horizon at the Sun's azimuth, degrees.
+- `low_sun_margin` (v1.2) should be explained in the UI as "Sun clearance below the terrain-data uncertainty margin (coarse DEM)": amber here means the data are too coarse to guarantee sunlight, not a computed shadow.
 - `points[].slope_coarse` / `target.slope_coarse` (v1.1): `true` when the slope comes from the 20 m/px DEM (outside the 5 m tile); the UI should mark such slopes as "coarse, may underestimate steepness". `slope_dem_m` is the source pixel size (5 or 20).
 - `coverage.message` (v1.1): `null`, or a note such as "Target is outside the LOLA 5 m/px tile; terrain from the 20 m/px LOLA polar DEM."
 - `horizon_profile.elevation_deg` has `360 / az_step_deg` values for the target point, starting at az 0.
@@ -207,6 +219,7 @@ For each point, with mission window `[landing, landing + mission_days)` sampled 
   - `longest_comm_gap_h > (1 - risk_margin) * max_comm_gap_h`
   - `earth_pct < min_earth_pct * (1 + risk_margin)` (clipped at 100)
   - `hours_until_sunset < mission_hours` → `sunset` (the mission will experience a sunset)
+  - (v1.2) during the lit hours of the mission, min(`sun_el − horizon_at_sun`) < required Sun clearance (`limits.min_sun_margin_deg`, or the automatic value of the point's DEM level) → `low_sun_margin`
 - **viable** otherwise.
 - `survival_probability = viable / n_points`. `survival_probability_incl_risky = (viable + risky) / n_points`. **Assumption to state in the UI: landing is uniformly distributed inside the ellipse.**
 
