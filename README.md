@@ -4,6 +4,8 @@ Evaluate the whole lunar landing ellipse, not just one point: how likely is your
 
 > **Work in progress.** Built for the NASA Space Apps Challenge 2026 — *Lunar Landing Site Navigator*.
 
+Repository: https://github.com/lauta-r0/lunar-landing--
+
 ## Structure
 
 ```
