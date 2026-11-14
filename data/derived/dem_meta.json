@@ -1,0 +1,83 @@
+{
+  "site_id": "Site20v2",
+  "dem_name": "LOLA 5 m/px LDEM \u2014 Site20v2 (Mons Mouton / Leibnitz beta plateau) + LOLA 20 m/px polar LDEM (LDEM_80S_20M, PDS LOLA GDR v2.0) + LOLA 40 m/px polar LDEM (LDEM_80S_40M, PDS LOLA GDR v2.0)",
+  "pixel_m": 5.0,
+  "shape_rows_cols": [
+    5200,
+    5200
+  ],
+  "bounds_xy_m": [
+    60000.0,
+    105000.0,
+    86000.0,
+    131000.0
+  ],
+  "crs_proj4": "+proj=stere +lat_0=-90 +lat_ts=-90 +lon_0=0 +x_0=0 +y_0=0 +R=1737400 +units=m +no_defs +type=crs",
+  "crs_wkt": "PROJCS[\"unknown\",GEOGCS[\"unknown\",DATUM[\"unknown\",SPHEROID[\"unknown\",1737400,0]],PRIMEM[\"Reference meridian\",0],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Polar_Stereographic\"],PARAMETER[\"latitude_of_origin\",-90],PARAMETER[\"central_meridian\",0],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1],AXIS[\"Easting\",NORTH],AXIS[\"Northing\",NORTH]]",
+  "closed_form_projection": true,
+  "center": {
+    "x_m": 73000.0,
+    "y_m": 118000.0,
+    "lat": -85.42658,
+    "lon": 31.74276,
+    "height_m": 6398.7
+  },
+  "corners_latlon": [
+    {
+      "x_m": 60000.0,
+      "y_m": 105000.0,
+      "lat": -86.01347,
+      "lon": 29.74488
+    },
+    {
+      "x_m": 60000.0,
+      "y_m": 131000.0,
+      "lat": -85.25104,
+      "lon": 24.6085
+    },
+    {
+      "x_m": 86000.0,
+      "y_m": 105000.0,
+      "lat": -85.52638,
+      "lon": 39.31911
+    },
+    {
+      "x_m": 86000.0,
+      "y_m": 131000.0,
+      "lat": -84.83564,
+      "lon": 33.28444
+    }
+  ],
+  "approx_bounds_latlon": {
+    "lat_min": -86.01347,
+    "lat_max": -84.83564,
+    "lon_min": 24.6085,
+    "lon_max": 39.31911
+  },
+  "height_range_m": [
+    1330.2,
+    6787.7
+  ],
+  "slope_range_deg": [
+    0.0,
+    58.52
+  ],
+  "nodata_fraction": 0.0,
+  "hillshade": {
+    "file": "hillshade.png",
+    "bounds_xy_m": [
+      56000.0,
+      101000.0,
+      90000.0,
+      153000.0
+    ],
+    "note": "display only; light from the upper left, not the real Sun"
+  },
+  "gmt_history": "xyz2grd -bi3 -I0005.00000 -R6.00000000000e+04/8.60000000000e+04/1.05000000000e+05/1.31000000000e+05 -G/adapt/nobackup/people/mkbarker/GCD/grid/5mpp/Site20v2//Site20v2_final_adj_5mpp_surf_test.grd -r",
+  "source_urls": {
+    "surf": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site20v2/Site20v2_final_adj_5mpp_surf.tif",
+    "slp": "https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site20v2/Site20v2_final_adj_5mpp_slp.tif"
+  },
+  "product_page": "https://pgda.gsfc.nasa.gov/products/78",
+  "citation": "Barker, M. K., et al. (2021), Improved LOLA elevation maps for south pole landing sites: Error estimates and their impact on illumination conditions, Planetary and Space Science 203, 105119, doi:10.1016/j.pss.2020.105119"
+}
