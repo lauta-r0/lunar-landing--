@@ -87,7 +87,7 @@ def check_contract_shape(r: dict, req: dict):
                 "summary", "target_metrics", "points", "timeseries", "horizon_profile", "delay_curve",
                 "delay_tolerance_days", "recommendations", "map", "warnings", "sources"]:
         assert key in r, key
-    assert r["schema_version"] == "1.0" and isinstance(r["is_sample"], bool)
+    assert r["schema_version"] == "1.1" and isinstance(r["is_sample"], bool)
     assert r["computed_utc"].endswith("Z") and isinstance(r["compute_ms"], int)
     assert r["coverage"]["in_coverage"] is True and isinstance(r["coverage"]["dem_name"], str)
     for key in ["lat", "lon", "x_m", "y_m", "elevation_m", "slope_deg"]:
@@ -116,6 +116,7 @@ def check_contract_shape(r: dict, req: dict):
         assert p["class"] in CLASSES and set(p["reasons"]) <= REASONS
         assert (p["class"] == "viable") == (p["reasons"] == [])
         assert isinstance(p["sun_at_touchdown"], bool)
+        assert isinstance(p["slope_coarse"], bool) and p["slope_dem_m"] > 0     # extra fields (CONTRACT 1.1)
         assert 0 <= p["sun_hours"] <= mission_h and 0 <= p["longest_dark_h"] <= mission_h
         assert 0 <= p["earth_pct"] <= 100 and 0 <= p["hours_until_sunset"] <= mission_h
         assert -90 <= p["lat"] <= 90 and -180 <= p["lon"] <= 180
@@ -161,7 +162,7 @@ def check_contract_shape(r: dict, req: dict):
     assert abs((x0 + x1) / 2 - r["target"]["x_m"]) < 0.2 and abs((y0 + y1) / 2 - r["target"]["y_m"]) < 0.2
     for px, py in mp["ellipse_polygon_xy_m"]:
         assert x0 <= px <= x1 and y0 <= py <= y1
-    assert isinstance(r["warnings"], list) and len(r["sources"]) == 2
+    assert isinstance(r["warnings"], list) and len(r["sources"]) in (2, 3)     # 3 with the regional DEM
 
 
 def test_contract_shape_grid_mode(engine_grid):

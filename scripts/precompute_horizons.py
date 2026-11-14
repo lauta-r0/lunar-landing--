@@ -1,21 +1,25 @@
 # Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team.
 """Precompute the horizon mask on a regular grid over the DEM (resumable, multi-process).
 
-    python scripts/precompute_horizons.py                     # 50 m grid, 1 km margin
+    python scripts/precompute_horizons.py                     # 50 m grid over the 5 m tile, 1 km margin
+    python scripts/precompute_horizons.py --area regional     # 100 m grid north of the tile (IM-2 sites)
     python scripts/precompute_horizons.py --spacing 100       # coarser fallback
     python scripts/precompute_horizons.py --workers 8
     python scripts/precompute_horizons.py --merge-only        # only build the final files
 
 How it works
+    The horizons use every terrain level that is present (5 m tile, then the 20 m / 40 m LOLA
+    polar DEM crops from scripts/prepare_regional_dem.py, rays out to 100 km).
+
     The grid is processed one row (constant y) at a time. Each finished row is written to
-    data/derived/horizon_tiles/row_XXXX.npz. Re-running the script skips the rows that are
+    data/derived/horizon_tiles[_regional]/row_XXXX.npz. Re-running the script skips the rows that are
     already there, so it can be stopped (Ctrl+C) and restarted at any time. When every row
-    exists, they are merged into data/derived/horizon_grid/:
+    exists, they are merged into data/derived/horizon_grid[_regional]/:
 
         horizon_deg.npy   (ny, nx, 360) float16   horizon elevation per 1-degree azimuth bin
         reach_10m.npy     (ny, nx, 360) uint16    distance to the last DEM sample, units of 10 m
         height_m.npy      (ny, nx)      float32   terrain height at the node
-        slope_deg.npy     (ny, nx)      float32   5 m slope at the node
+        slope_deg.npy     (ny, nx)      float32   slope at the node (5 m tile, else 20 m DEM)
         lat.npy, lon.npy  (ny, nx)      float64
         meta.json         grid geometry and the parameters used
 
@@ -56,14 +60,17 @@ def grid_axes(bounds, spacing: float, margin: float):
     return xs, ys
 
 
-def _init_worker(surf_npy: str, x_min: float, y_max: float, pixel_m: float, crs_wkt, xs, ys,
-                 observer_height_m: float, tiles_dir: str) -> None:
+def _init_worker(layer_specs: list, crs_wkt, xs, ys, observer_height_m: float, tiles_dir: str) -> None:
     from engine import geo
-    from engine.terrain import Terrain
+    from engine.terrain import LayeredTerrain, Terrain
 
     geo.configure(crs_wkt)
-    surf = np.load(surf_npy, mmap_mode="r")      # shared between workers through the OS page cache
-    _W["terrain"] = Terrain(surf, None, x_min=x_min, y_max=y_max, pixel_m=pixel_m)
+    layers = []
+    for sp in layer_specs:
+        surf = np.load(sp["npy"], mmap_mode="r")      # shared between workers through the OS page cache
+        layers.append(Terrain(surf, None, x_min=sp["x_min"], y_max=sp["y_max"], pixel_m=sp["pixel_m"],
+                              z_scale=sp["z_scale"], z_offset=sp["z_offset"], role=sp["role"]))
+    _W["terrain"] = layers[0] if len(layers) == 1 else LayeredTerrain(layers)
     _W["xs"], _W["ys"] = xs, ys
     _W["h_obs"] = observer_height_m
     _W["tiles_dir"] = Path(tiles_dir)
@@ -115,6 +122,8 @@ def merge(tiles_dir: Path, out_dir: Path, terrain, xs, ys, params: dict) -> None
         "n_az": N_AZ, "az_step_deg": 360.0 / N_AZ, "reach_unit_m": REACH_UNIT_M,
         "dem_name": terrain.name, "site_id": terrain.site_id,
         "dem_bounds_xy_m": list(terrain.bounds), "crs_proj4": geo.crs_proj4(),
+        "terrain_levels": [{"role": lay.role, "name": lay.name, "pixel_m": lay.pixel_m, "bounds_xy_m": list(lay.bounds),
+                            "z_offset_m": lay.z_offset} for lay in getattr(terrain, "layers", [terrain])],
         "horizon_min_deg": float(np.min(hor)), "horizon_max_deg": float(np.max(hor)),
         "created_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "arrays": {"horizon_deg.npy": "float16 (ny, nx, 360) deg", "reach_10m.npy": "uint16 (ny, nx, 360) x10 m",
@@ -128,8 +137,10 @@ def merge(tiles_dir: Path, out_dir: Path, terrain, xs, ys, params: dict) -> None
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--spacing", type=float, default=50.0, help="grid spacing in meters (default 50)")
-    ap.add_argument("--margin", type=float, default=1000.0, help="margin excluded at the DEM edge, m")
+    ap.add_argument("--area", choices=["fine", "regional"], default="fine",
+                    help="fine: the 5 m tile minus --margin (default); regional: the IM-2 area of regional_meta.json")
+    ap.add_argument("--spacing", type=float, default=None, help="grid spacing in meters (default 50 fine, 100 regional)")
+    ap.add_argument("--margin", type=float, default=1000.0, help="margin excluded at the 5 m DEM edge (fine area), m")
     ap.add_argument("--observer-height", type=float, default=2.0)
     ap.add_argument("--workers", type=int, default=max(1, min((os.cpu_count() or 2) - 2, 12)))
     ap.add_argument("--derived-dir", default=str(REPO_ROOT / "data" / "derived"))
@@ -143,22 +154,38 @@ def main() -> int:
     from engine.terrain import find_dem_files, load_terrain
 
     derived = Path(args.derived_dir)
-    tiles_dir = derived / "horizon_tiles"
-    out_dir = derived / "horizon_grid"
+    suffix = "" if args.area == "fine" else "_regional"
+    spacing = args.spacing or (50.0 if args.area == "fine" else 100.0)
+    tiles_dir = derived / f"horizon_tiles{suffix}"
+    out_dir = derived / f"horizon_grid{suffix}"
     tiles_dir.mkdir(parents=True, exist_ok=True)
 
     terrain = load_terrain()
     import rasterio
     with rasterio.open(find_dem_files()[2]) as ds:
         crs_wkt = ds.crs.to_wkt() if ds.crs else None
+    levels = list(getattr(terrain, "layers", [terrain]))
 
-    xs, ys = grid_axes(terrain.bounds, args.spacing, args.margin)
+    if args.area == "fine":
+        xs, ys = grid_axes(levels[0].bounds, spacing, args.margin)
+        margin = args.margin
+    else:
+        reg_meta = derived / "regional_meta.json"
+        if len(levels) < 2 or not reg_meta.exists():
+            print("The regional grid needs the regional DEM: run python scripts/prepare_regional_dem.py")
+            return 1
+        x0, y0, x1, y1 = json.loads(reg_meta.read_text(encoding="utf-8"))["area_regional_xy_m"]
+        xs = np.arange(x0, x1 + 1e-6, spacing)
+        ys = np.arange(y0, y1 + 1e-6, spacing)
+        margin = None
     params = {
-        "spacing_m": args.spacing, "margin_m": args.margin, "observer_height_m": args.observer_height,
+        "area": args.area, "spacing_m": spacing, "margin_m": margin, "observer_height_m": args.observer_height,
         "site_id": terrain.site_id, "nx": int(xs.size), "ny": int(ys.size),
         "x0": float(xs[0]), "y0": float(ys[0]),
         "ray_sampling": {"s0_m": horizon.S0_M, "ds_min_m": horizon.DS_MIN_M, "growth": horizon.GROWTH,
-                         "near_bilinear_m": horizon.NEAR_BILINEAR_M},
+                         "near_bilinear_m": horizon.NEAR_BILINEAR_M, "max_ray_m": horizon.MAX_RAY_M},
+        "levels": [{"role": lay.role, "pixel_m": lay.pixel_m, "bounds_xy_m": [float(v) for v in lay.bounds],
+                    "z_offset_m": lay.z_offset} for lay in levels],
     }
     params_file = tiles_dir / "params.json"
     if params_file.exists():
@@ -175,17 +202,21 @@ def main() -> int:
 
     todo = [j for j in range(ys.size) if not _row_path(tiles_dir, j).exists()]
     n_nodes = xs.size * ys.size
-    print(f"grid {ys.size} x {xs.size} = {n_nodes} nodes, spacing {args.spacing:.0f} m, "
-          f"margin {args.margin:.0f} m; rows done {ys.size - len(todo)}/{ys.size}")
+    print(f"{args.area} grid {ys.size} x {xs.size} = {n_nodes} nodes, spacing {spacing:.0f} m, "
+          f"x [{xs[0]:.0f}, {xs[-1]:.0f}] y [{ys[0]:.0f}, {ys[-1]:.0f}]; rows done {ys.size - len(todo)}/{ys.size}; "
+          f"terrain levels: {', '.join(f'{lay.role} {lay.pixel_m:g} m' for lay in levels)}")
 
     if todo and not args.merge_only:
         if args.limit_rows:
             todo = todo[: args.limit_rows]
-        surf_npy = tiles_dir / "_surf_f32.npy"
-        if not surf_npy.exists():
-            np.save(surf_npy, terrain.surf)
-        init_args = (str(surf_npy), terrain.x_min, terrain.y_max, terrain.pixel_m, crs_wkt, xs, ys,
-                     args.observer_height, str(tiles_dir))
+        layer_specs = []
+        for lay in levels:
+            npy = tiles_dir / f"_surf_{lay.role}.npy"
+            if not npy.exists():
+                np.save(npy, lay.surf)
+            layer_specs.append({"npy": str(npy), "x_min": lay.x_min, "y_max": lay.y_max, "pixel_m": lay.pixel_m,
+                                "z_scale": lay.z_scale, "z_offset": lay.z_offset, "role": lay.role})
+        init_args = (layer_specs, crs_wkt, xs, ys, args.observer_height, str(tiles_dir))
         try:
             from tqdm import tqdm
         except ImportError:  # pragma: no cover
@@ -214,7 +245,7 @@ def main() -> int:
         print(f"{len(missing)} rows still missing; run again to continue. Not merging yet.")
         return 0
     merge(tiles_dir, out_dir, terrain, xs, ys, params)
-    print("done. The row tiles in data/derived/horizon_tiles/ can be deleted to save disk space.")
+    print(f"done. The row tiles in {tiles_dir} can be deleted to save disk space.")
     return 0
 
 

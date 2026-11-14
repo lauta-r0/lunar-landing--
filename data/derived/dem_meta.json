@@ -1,6 +1,6 @@
 {
   "site_id": "Site20v2",
-  "dem_name": "LOLA 5 m/px LDEM \u2014 Site20v2 (Mons Mouton / Leibnitz beta plateau)",
+  "dem_name": "LOLA 5 m/px LDEM \u2014 Site20v2 (Mons Mouton / Leibnitz beta plateau) + LOLA 20 m/px polar LDEM (LDEM_80S_20M, PDS LOLA GDR v2.0) + LOLA 40 m/px polar LDEM (LDEM_80S_40M, PDS LOLA GDR v2.0)",
   "pixel_m": 5.0,
   "shape_rows_cols": [
     5200,
@@ -66,10 +66,10 @@
   "hillshade": {
     "file": "hillshade.png",
     "bounds_xy_m": [
-      60000.0,
-      105005.0,
-      85995.0,
-      131000.0
+      56000.0,
+      101000.0,
+      90000.0,
+      153000.0
     ],
     "note": "display only; light from the upper left, not the real Sun"
   },

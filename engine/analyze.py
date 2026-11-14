@@ -30,10 +30,10 @@ import numpy as np
 
 from . import geo, horizon, metrics
 from .errors import EngineError
-from .grid import HorizonGrid, load_grid
+from .grid import GridSet, HorizonGrid, load_grids
 from .metrics import CLASS_NAMES, NOT_VIABLE, RISKY, VIABLE
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EPHEMERIS_FILE = REPO_ROOT / "data" / "ephemeris" / "sun_earth_vectors.npz"
 
@@ -42,6 +42,8 @@ MIN_ELLIPSE_INSIDE = 0.8     # at least 80% of the ellipse must be inside the an
 MAX_POINTS = 400
 MIN_GRID_NODES = 40          # fewer grid nodes than this inside the ellipse -> on-the-fly hex grid
 FLY_POINTS = 70              # target number of on-the-fly points
+# threads for on-the-fly horizons (LUNASCOUT_THREADS overrides; Cloud Run with 2 vCPU -> 2)
+FLY_THREADS = int(os.environ.get("LUNASCOUT_THREADS") or min(4, os.cpu_count() or 1))
 REC_MAX_POINTS = 60          # points per recommendation candidate
 SUN_HOURS_MIN_FRACTION = 0.6
 AREA_OVER_SLOPE_MAX_PCT = 20.0
@@ -62,6 +64,9 @@ INPUT_LIMITS = {
 }
 SOURCES_HORIZONS = ("JPL Horizons System (Solar System Dynamics Group, NASA JPL) — "
                     "Sun and Earth topocentric positions")
+SOURCES_REGIONAL = ("LRO LOLA 20 m/px and 40 m/px south polar LDEM (LRO-L-LOLA-4-GDR-V1.0, product v2.0, "
+                    "NASA PDS Geosciences Node; Smith et al. 2017)")
+MAX_SLOPE_SAMPLES = 250000   # slope samples for "ellipse area over max slope"
 BEARING_NAMES = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 # Distinctive spots picked from the terrain itself (descriptive labels, NOT official names).
@@ -76,21 +81,36 @@ CURATED_BY_SITE: dict[str, list[dict]] = {
         {"id": "sunlit_slope", "name": "Sunlit slope (steep)", "lat": -85.48962, "lon": 30.66935},
     ],
 }
+# Real landing sites, listed whenever they are inside the analyzable area (needs the regional DEM).
+# Sources in ENGINE.md: LROC featured image "IM-2 Landing Region" (intended site) and LROC via
+# Wikipedia "IM-2" / "Mons Mouton" (actual touchdown).
+CURATED_REAL_SITES: list[dict] = [
+    {"id": "im2_athena_intended", "name": "IM-2 Athena intended site", "lat": -84.78, "lon": 29.13},
+    {"id": "im2_athena_actual", "name": "IM-2 Athena actual touchdown", "lat": -84.7906, "lon": 29.1957},
+]
 
 
 # =========================================================================== engine state
 class _Engine:
     def __init__(self, terrain, grid, ephemeris, local_az_el, eph_is_stub: bool):
         self.terrain = terrain
-        self.grid: HorizonGrid | None = grid
+        if isinstance(grid, HorizonGrid):
+            grid = GridSet([grid])
+        self.grid: GridSet | None = grid
         self.eph = ephemeris
         self.local_az_el = local_az_el
         self.eph_is_stub = eph_is_stub
         if grid is not None:
-            self.area = tuple(grid.bounds)
+            # each node stands for the cell around it: pad by half the coarsest spacing so the fine
+            # (y <= 130.0 km) and regional (y >= 130.1 km) areas touch without a gap
+            pad = 0.5 * max(g.spacing for g in grid.grids)
+            self.areas = [(a[0] - pad, a[1] - pad, a[2] + pad, a[3] + pad) for a in grid.areas]
         else:
             x0, y0, x1, y1 = terrain.bounds
-            self.area = (x0 + MARGIN_M, y0 + MARGIN_M, x1 - MARGIN_M, y1 - MARGIN_M)
+            self.areas = [(x0 + MARGIN_M, y0 + MARGIN_M, x1 - MARGIN_M, y1 - MARGIN_M)]
+        b = np.array(self.areas)
+        self.area = (float(b[:, 0].min()), float(b[:, 1].min()), float(b[:, 2].max()), float(b[:, 3].max()))
+        self.layered = len(getattr(terrain, "layers", [terrain])) > 1
         cx, cy = terrain.center_xy
         clat, clon = geo.xy_to_latlon(cx, cy)
         self.center = (float(clat), float(clon))
@@ -100,9 +120,16 @@ class _Engine:
         self.result_cache: OrderedDict = OrderedDict()
 
     def in_area(self, x, y):
-        x0, y0, x1, y1 = self.area
+        """True where a point is inside one of the analyzable rectangles."""
         x, y = np.asarray(x), np.asarray(y)
-        return (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
+        out = np.zeros(np.broadcast(x, y).shape, dtype=bool)
+        for x0, y0, x1, y1 in self.areas:
+            out |= (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
+        return out
+
+    def fine_layer(self, x, y):
+        """True where the 5 m tile (finest level) covers the point."""
+        return np.asarray(self.terrain.layer_index_at(x, y)) == 0
 
 
 _ENGINE: _Engine | None = None
@@ -131,7 +158,7 @@ def _engine() -> _Engine:
         from .terrain import get_terrain
         terrain = get_terrain()
         eph, az_el, is_stub = _load_ephemeris()
-        _ENGINE = _Engine(terrain, load_grid(), eph, az_el, is_stub)
+        _ENGINE = _Engine(terrain, load_grids(), eph, az_el, is_stub)
     return _ENGINE
 
 
@@ -292,36 +319,10 @@ class _Frame:
         return x, y, pitch
 
 
-def _lattice_mask(jj, ii, level: int):
-    """Regular sub-lattices of the grid: level 0 = all nodes, each level halves the density."""
-    stride = 2 ** (level // 2)
-    m = (jj % stride == 0) & (ii % stride == 0)
-    if level % 2 == 1:
-        m &= ((jj // stride + ii // stride) % 2 == 0)
-    return m
-
-
-def _lattice_spacing(spacing: float, level: int) -> float:
-    return spacing * (2 ** (level // 2)) * (math.sqrt(2.0) if level % 2 else 1.0)
-
-
-def _grid_nodes_in_ellipse(grid: HorizonGrid, frame: _Frame, a=None, b=None):
+def _grid_select(grid: GridSet, frame: _Frame, a=None, b=None):
     ex, ey = frame.half_extent_xy(a, b)
-    jj, ii = grid.nodes_in_bbox(frame.x0 - ex, frame.y0 - ey, frame.x0 + ex, frame.y0 + ey)
-    if jj.size == 0:
-        return jj, ii
-    x, y = grid.node_xy(jj, ii)
-    keep = frame.inside(x, y, a, b)
-    return jj[keep], ii[keep]
-
-
-def _thin(jj, ii, max_points: int, start_level: int = 0):
-    level = start_level
-    while True:
-        m = _lattice_mask(jj, ii, level)
-        if int(m.sum()) <= max_points or level > 20:
-            return jj[m], ii[m], level
-        level += 1
+    return grid.select(lambda x, y: frame.inside(x, y, a, b),
+                       frame.x0 - ex, frame.y0 - ey, frame.x0 + ex, frame.y0 + ey)
 
 
 def _sample_points(eng: _Engine, frame: _Frame, h_obs: float):
@@ -329,14 +330,13 @@ def _sample_points(eng: _Engine, frame: _Frame, h_obs: float):
     grid = eng.grid
     grid_ok = grid is not None and abs(grid.observer_height_m - h_obs) < 1e-6
     if grid_ok:
-        jj, ii = _grid_nodes_in_ellipse(grid, frame)
-        if jj.size >= MIN_GRID_NODES:
-            n_all = int(jj.size)
-            jj, ii, level = _thin(jj, ii, MAX_POINTS)
-            x, y = grid.node_xy(jj, ii)
-            return {"mode": "grid", "x": x, "y": y, "lat": grid.lat[jj, ii], "lon": grid.lon[jj, ii],
-                    "slope": grid.slope_deg[jj, ii].astype(np.float64), "horizon": grid.horizons(jj, ii),
-                    "n_candidates": n_all, "spacing_m": _lattice_spacing(grid.spacing, level)}
+        sel = _grid_select(grid, frame)
+        n_all = GridSet.count(sel)
+        if n_all >= MIN_GRID_NODES:
+            sel, spacing = grid.thin(sel, MAX_POINTS)
+            out = grid.gather(sel)
+            out.update({"mode": "grid", "n_candidates": n_all, "spacing_m": float(spacing)})
+            return out
 
     key = (round(frame.x0, 1), round(frame.y0, 1), frame.a, frame.b,
            round(float(np.degrees(np.arctan2(frame.major[0], frame.major[1]))), 4), h_obs)
@@ -346,7 +346,7 @@ def _sample_points(eng: _Engine, frame: _Frame, h_obs: float):
     x, y, pitch = frame.hex_points(FLY_POINTS)
     keep = eng.in_area(x, y)
     x, y = x[keep], y[keep]
-    elev, _reach, _z0 = horizon.compute_horizons_xy(x, y, h_obs, eng.terrain)
+    elev, _reach, _z0 = horizon.compute_horizons_xy(x, y, h_obs, eng.terrain, workers=FLY_THREADS)
     lat, lon = geo.xy_to_latlon(x, y)
     if grid is None:
         reason = "no_grid"
@@ -376,22 +376,21 @@ def _target_horizon(eng: _Engine, x: float, y: float, h_obs: float) -> horizon.H
 
 
 def _area_over_slope_pct(eng: _Engine, frame: _Frame, max_slope: float) -> float:
-    """% of the ellipse area (5 m slope pixels, sub-sampled if huge) steeper than max_slope."""
+    """% of the ellipse area steeper than max_slope, from a regular lattice of slope samples.
+
+    The lattice spacing is the 5 m pixel size (coarser only for huge ellipses), and each sample reads
+    the finest slope raster available there (5 m on the tile, 20 m outside it).
+    """
     t = eng.terrain
     ex, ey = frame.half_extent_xy()
-    c0 = max(0, int((frame.x0 - ex - t.x_min) / t.pixel_m))
-    c1 = min(t.nx, int((frame.x0 + ex - t.x_min) / t.pixel_m) + 1)
-    r0 = max(0, int((t.y_max - (frame.y0 + ey)) / t.pixel_m))
-    r1 = min(t.ny, int((t.y_max - (frame.y0 - ey)) / t.pixel_m) + 1)
-    if c1 <= c0 or r1 <= r0:
+    step = max(float(t.pixel_m), math.sqrt(4.0 * ex * ey / MAX_SLOPE_SAMPLES))
+    xs = np.arange(frame.x0 - ex + 0.5 * step, frame.x0 + ex, step)
+    ys = np.arange(frame.y0 - ey + 0.5 * step, frame.y0 + ey, step)
+    xx, yy = np.meshgrid(xs, ys)
+    inside = frame.inside(xx, yy)
+    if not inside.any():
         return float("nan")
-    step = max(1, int(math.sqrt((c1 - c0) * (r1 - r0) / 250000.0)))
-    cols = np.arange(c0, c1, step)
-    rows = np.arange(r0, r1, step)
-    x = t.x_min + (cols + 0.5) * t.pixel_m
-    y = t.y_max - (rows + 0.5) * t.pixel_m
-    inside = frame.inside(x[None, :], y[:, None])
-    slp = t.slp[r0:r1:step, c0:c1:step][inside]
+    slp = t.slope_at(xx[inside], yy[inside])
     slp = slp[np.isfinite(slp)]
     return float(100.0 * np.mean(slp > max_slope)) if slp.size else float("nan")
 
@@ -419,7 +418,7 @@ def _out_of_coverage(eng: _Engine, why: str):
 def _curated_sites(eng: _Engine) -> list[dict]:
     clat, clon = eng.center
     sites = [{"id": "mons_mouton_center", "name": "Mons Mouton (DEM center)", "lat": _r(clat, 5), "lon": _r(clon, 5)}]
-    for s in CURATED_BY_SITE.get(eng.terrain.site_id, []):
+    for s in CURATED_BY_SITE.get(eng.terrain.site_id, []) + CURATED_REAL_SITES:
         x, y = geo.latlon_to_xy(s["lat"], s["lon"])
         if bool(eng.in_area(x, y)):
             sites.append(dict(s))
@@ -596,6 +595,12 @@ def _analyze(eng: _Engine, req: dict) -> dict:
     checks = [tmx["pass"] for tmx in target_metrics if tmx["pass"] is not None]
 
     # ---- 6. points --------------------------------------------------------------------
+    # slope source per point: 5 m tile, or the coarser 20 m polar DEM outside it (underestimates
+    # local steepness; flagged per point and in the warnings)
+    fine_pts = eng.fine_layer(pts["x"], pts["y"])
+    target_fine = bool(eng.fine_layer(tx, ty))
+    coarse_px = float(eng.terrain.layers[1].pixel_m) if eng.layered else float(eng.terrain.pixel_m)
+    fine_px = float(eng.terrain.pixel_m)
     points = []
     for i in range(n_pts):
         points.append({
@@ -604,6 +609,8 @@ def _analyze(eng: _Engine, req: dict) -> dict:
             "class": CLASS_NAMES[int(codes[i])],
             "reasons": metrics.reasons_for(i, codes, fail, risk),
             "slope_deg": _r(pts["slope"][i], 3),
+            "slope_dem_m": fine_px if fine_pts[i] else coarse_px,
+            "slope_coarse": bool(not fine_pts[i]),
             "sun_hours": _r(m["sun_hours"][i], 1), "longest_dark_h": _r(m["longest_dark_h"][i], 1),
             "earth_pct": _r(m["earth_pct"][i], 1), "longest_comm_gap_h": _r(m["longest_comm_gap_h"][i], 1),
             "hours_until_sunset": _r(m["hours_until_sunset"][i], 1),
@@ -629,11 +636,27 @@ def _analyze(eng: _Engine, req: dict) -> dict:
     # ---- 8. warnings ------------------------------------------------------------------
     reach_km = thz.reach_m / 1000.0
     short = float(np.mean(thz.reach_m < horizon.MIN_TRUSTED_REACH_M))
-    msg = (f"Horizon is modeled only out to the DEM edge ({reach_km.min():.1f}–{reach_km.max():.1f} km from the "
-           "target, depending on direction); more distant peaks may block additional sunlight or Earth visibility.")
+    if eng.layered:
+        rng = (f"{reach_km.max():.0f}" if reach_km.max() - reach_km.min() < 1.0
+               else f"{reach_km.min():.0f}–{reach_km.max():.0f}")
+        msg = (f"Horizon is modeled out to {rng} km from the target: LOLA 5 m/px "
+               "tile nearby, LOLA 20 m and 40 m/px polar DEM beyond it. Terrain farther than "
+               f"{horizon.MAX_RAY_M / 1000:.0f} km is not modeled.")
+    else:
+        msg = (f"Horizon is modeled only out to the DEM edge ({reach_km.min():.1f}–{reach_km.max():.1f} km from the "
+               "target, depending on direction); more distant peaks may block additional sunlight or Earth "
+               "visibility.")
     if short > 0:
         msg += f" {100 * short:.0f}% of directions reach less than {horizon.MIN_TRUSTED_REACH_M / 1000:.0f} km."
     warnings.append(msg)
+    if eng.layered and not bool(np.all(fine_pts)):
+        share = 100.0 * float(np.mean(~fine_pts))
+        warnings.append(
+            f"{share:.0f}% of the sample points (target {'inside' if target_fine else 'outside'} the tile) lie "
+            "outside the LOLA 5 m/px tile: their terrain and slope come from the 20 m/px LOLA polar DEM, which "
+            "smooths features smaller than about 40 m, so slopes there underestimate the local steepness "
+            "(points flagged with slope_coarse = true). Tip-over risk from boulders and small craters is not "
+            "captured.")
     if pts["mode"] == "on_the_fly":
         why = {"small_ellipse": "Small ellipse", "no_grid": "Precomputed horizon grid not available",
                "observer_height": "Observer height differs from the precomputed grid"}[pts["reason"]]
@@ -673,9 +696,12 @@ def _analyze(eng: _Engine, req: dict) -> dict:
         "computed_utc": _iso(datetime.now(timezone.utc)),
         "compute_ms": int(round((time.perf_counter() - t_start) * 1000.0)),
         "inputs": req,
-        "coverage": {"in_coverage": True, "dem_name": eng.terrain.name, "message": None},
+        "coverage": {"in_coverage": True, "dem_name": eng.terrain.name,
+                     "message": (None if target_fine else
+                                 "Target is outside the LOLA 5 m/px tile; terrain from the 20 m/px LOLA polar DEM.")},
         "target": {"lat": _r(lat, 5), "lon": _r(lon, 5), "x_m": _r(tx, 1), "y_m": _r(ty, 1),
-                   "elevation_m": _r(thz.ground_height_m, 1), "slope_deg": _r(t_slope, 3)},
+                   "elevation_m": _r(thz.ground_height_m, 1), "slope_deg": _r(t_slope, 3),
+                   "slope_dem_m": fine_px if target_fine else coarse_px, "slope_coarse": not target_fine},
         "summary": {
             "n_points": n_pts, "viable": n_viable, "risky": n_risky, "not_viable": n_bad,
             "survival_probability": _r(p_survive, 3),
@@ -693,7 +719,8 @@ def _analyze(eng: _Engine, req: dict) -> dict:
         "map": map_block,
         "warnings": warnings,
         "sources": [SOURCES_HORIZONS,
-                    f"LRO {eng.terrain.name} (Barker et al. 2021, NASA GSFC PGDA)"],
+                    f"LRO {getattr(eng.terrain, 'short_name', eng.terrain.name)} (Barker et al. 2021, NASA GSFC PGDA)"]
+                   + ([SOURCES_REGIONAL] if eng.layered else []),
     }
 
 
@@ -725,22 +752,24 @@ def _recommend(eng: _Engine, req: dict, frame: _Frame, p_current: float, sun_vec
         ax, ay = f.area_points(200)
         if float(np.mean(eng.in_area(ax, ay))) < MIN_ELLIPSE_INSIDE:
             continue
-        jj, ii = _grid_nodes_in_ellipse(grid, f, a_eff, b_eff)
-        if jj.size == 0:
+        sel = _grid_select(grid, f, a_eff, b_eff)
+        if not sel:
             continue
-        start = 2 if int(_lattice_mask(jj, ii, 2).sum()) >= 12 else 0
-        jj, ii, _level = _thin(jj, ii, REC_MAX_POINTS, start)
-        blocks.append((jj, ii))
-        meta.append((name, clat, clon, d_km, int(jj.size)))
+        coarse, _sp = grid.thin(sel, REC_MAX_POINTS, min_spacing=2.0 * grid.spacing)
+        sel = coarse if GridSet.count(coarse) >= 12 else grid.thin(sel, REC_MAX_POINTS)[0]
+        g = grid.gather(sel)
+        blocks.append(g)
+        meta.append((name, clat, clon, d_km, int(g["x"].size)))
     if not blocks:
         return []
 
-    jj = np.concatenate([b[0] for b in blocks])
-    ii = np.concatenate([b[1] for b in blocks])
-    vis = _visibility(eng, grid.lat[jj, ii], grid.lon[jj, ii], grid.horizons(jj, ii), sun_vec, earth_vec)
+    lat_all = np.concatenate([b["lat"] for b in blocks])
+    lon_all = np.concatenate([b["lon"] for b in blocks])
+    hor_all = np.concatenate([b["horizon"] for b in blocks])
+    slope_all = np.concatenate([b["slope"] for b in blocks])
+    vis = _visibility(eng, lat_all, lon_all, hor_all, sun_vec, earth_vec)
     m = metrics.point_metrics(vis["sun_lit"], vis["earth_visible"])
-    codes, _fail, _risk = metrics.classify(m, grid.slope_deg[jj, ii].astype(np.float64), limits,
-                                           opts["risk_margin"], mission_h)
+    codes, _fail, _risk = metrics.classify(m, slope_all, limits, opts["risk_margin"], mission_h)
     out, pos = [], 0
     for name, clat, clon, d_km, n in meta:
         p = float(np.mean(codes[pos:pos + n] == VIABLE))

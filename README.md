@@ -26,6 +26,7 @@ lunascout/
 
 - JPL Horizons System (NASA JPL) — Sun and Earth positions.
 - LRO LOLA 5 m/px site DEMs (Barker et al. 2021, NASA GSFC PGDA).
+- LRO LOLA 20 m/px and 40 m/px south polar gridded DEMs (LRO-L-LOLA-4-GDR-V1.0, NASA PDS Geosciences Node; Smith et al. 2017) — terrain outside the 5 m tile and far-field horizon.
 
 ## Use of AI
 
