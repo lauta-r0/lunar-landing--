@@ -1,0 +1,299 @@
+<!doctype html>
+<!-- Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LunaScout — Landing-site checker</title>
+<meta name="description" content="LunaScout evaluates the whole landing ellipse at the lunar south pole with real LOLA topography and JPL Horizons ephemerides.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Cpath d='M16 2v8M16 22v8M2 16h8M22 16h8' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="wordmark">LunaScout</div>
+    <div class="eyebrow">Landing-site checker · Lunar south pole</div>
+  </div>
+  <div class="status">
+    <span id="run-status" class="status-text num" aria-live="polite"><span class="status-dot status-dot--off" aria-hidden="true"></span>Connecting…</span>
+    <span id="sample-badge" class="pill pill--sample" hidden>Sample data — API offline</span>
+    <button type="button" class="btn btn--sm" id="about-btn">About &amp; method</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ================= Settings ================= -->
+  <aside class="panel panel--left" aria-labelledby="settings-title">
+    <div class="section-head">
+      <div class="eyebrow">Step 01</div>
+      <h2 class="h2" id="settings-title">Mission settings</h2>
+    </div>
+
+    <form id="settings" novalidate>
+      <div style="display:flex;flex-direction:column;gap:24px">
+        <fieldset>
+          <legend>Target</legend>
+          <div class="grid-2">
+            <div class="field">
+              <label for="f-lat">Latitude (°)</label>
+              <input id="f-lat" name="lat" class="input" type="number" step="0.00001" inputmode="decimal" required>
+              <p class="field-error" id="e-lat"></p>
+            </div>
+            <div class="field">
+              <label for="f-lon">Longitude (°E)</label>
+              <input id="f-lon" name="lon" class="input" type="number" step="0.00001" inputmode="decimal" required>
+              <p class="field-error" id="e-lon"></p>
+            </div>
+          </div>
+          <div class="sites">
+            <div class="eyebrow" id="sites-label">Quick picks</div>
+            <div class="sites-list" id="sites-list" role="group" aria-labelledby="sites-label"></div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Timing</legend>
+          <div class="field">
+            <label for="f-date">Landing date &amp; time (UTC)</label>
+            <input id="f-date" name="date" class="input" type="datetime-local" step="3600" required>
+            <p class="field-error" id="e-date"></p>
+          </div>
+          <div class="field">
+            <label for="f-days">Mission duration (days)</label>
+            <input id="f-days" name="days" class="input" type="number" step="1" required>
+            <p class="field-error" id="e-days"></p>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Landing ellipse</legend>
+          <div class="grid-3">
+            <div class="field">
+              <label for="f-smaj">Semi-major (m)</label>
+              <input id="f-smaj" name="smaj" class="input" type="number" step="50" required>
+            </div>
+            <div class="field">
+              <label for="f-smin">Semi-minor (m)</label>
+              <input id="f-smin" name="smin" class="input" type="number" step="50" required>
+            </div>
+            <div class="field">
+              <label for="f-az">Azimuth (°)</label>
+              <input id="f-az" name="az" class="input" type="number" step="5" min="0" max="360" required>
+            </div>
+          </div>
+          <p class="field-error" id="e-ellipse"></p>
+          <div class="field-hint">Azimuth of the long axis, clockwise from local north.</div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Lander limits</legend>
+          <div class="field">
+            <label for="f-dark">Max tolerable darkness (battery h)</label>
+            <input id="f-dark" name="dark" class="input" type="number" step="1" required>
+            <p class="field-error" id="e-dark"></p>
+          </div>
+          <div class="field">
+            <label for="f-gap">Max comms gap (h)</label>
+            <input id="f-gap" name="gap" class="input" type="number" step="1" required>
+            <p class="field-error" id="e-gap"></p>
+          </div>
+          <div class="field">
+            <label for="f-earth">Min mission time with Earth visible (%)</label>
+            <input id="f-earth" name="earth" class="input" type="number" step="1" required>
+            <p class="field-error" id="e-earth"></p>
+          </div>
+          <div class="field">
+            <label for="f-slope">Max safe slope (°)</label>
+            <input id="f-slope" name="slope" class="input" type="number" step="0.5" required>
+            <p class="field-error" id="e-slope"></p>
+          </div>
+        </fieldset>
+
+        <details class="advanced" id="advanced">
+          <summary>Advanced</summary>
+          <div class="adv-body">
+            <div class="field">
+              <label for="f-margin">Required Sun clearance (°)</label>
+              <input id="f-margin" name="margin" class="input" type="number" step="0.1" placeholder="0 — real data only">
+              <div class="field-hint">Optional safety margin above the terrain horizon. Empty or 0 uses the terrain data as is.</div>
+              <p class="field-error" id="e-margin"></p>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="f-risk">Risk margin (%)</label>
+                <input id="f-risk" name="risk" class="input" type="number" step="1" min="0" max="90">
+                <p class="field-error" id="e-risk"></p>
+              </div>
+              <div class="field">
+                <label for="f-delay">Delay range (days)</label>
+                <input id="f-delay" name="delay" class="input" type="number" step="1">
+                <p class="field-error" id="e-delay"></p>
+              </div>
+            </div>
+            <div class="field">
+              <label for="f-height">Observer height (m)</label>
+              <input id="f-height" name="height" class="input" type="number" step="0.5" min="0" max="20">
+              <div class="field-hint">Height of the solar array / antenna above the ground.</div>
+              <p class="field-error" id="e-height"></p>
+            </div>
+          </div>
+        </details>
+
+        <div class="run-block">
+          <button type="submit" class="btn btn--block" id="run-btn">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="run-label">Run analysis</span>
+            <svg class="btn-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 7h10M8 3l4 4-4 4"/></svg>
+          </button>
+          <div class="dirty-note" id="dirty-note" hidden>Settings changed — run to update</div>
+        </div>
+      </div>
+    </form>
+  </aside>
+
+  <!-- ================= Map + timeline ================= -->
+  <section class="center" aria-label="Landing ellipse map and mission timeline">
+    <div class="map-head">
+      <div class="map-title">
+        <div class="eyebrow num" id="map-eyebrow">Step 02 · Landing ellipse</div>
+        <h1 id="site-name">LunaScout</h1>
+        <div class="coord-line" id="coord-line">&nbsp;</div>
+      </div>
+      <div class="view-meta" id="view-meta">Polar stereographic view</div>
+    </div>
+
+    <div class="notices" id="notices" aria-live="polite"></div>
+
+    <div class="map-frame" id="map-frame">
+      <canvas id="map-canvas" tabindex="0" role="img" aria-label="Map of the landing ellipse. Use arrow keys to pan, plus and minus to zoom, 0 to reset."></canvas>
+      <div class="map-empty" id="map-empty">Loading terrain…</div>
+
+      <div class="ov ov--tl" id="ov-sky" hidden>
+        <div class="ov-row">
+          <svg id="sun-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#FFE066" stroke-width="1.8" aria-hidden="true"><path d="M8 14V2M3.5 6.5 8 2l4.5 4.5"/></svg>
+          <span id="sun-text">Sun</span>
+        </div>
+        <div class="ov-row">
+          <svg id="earth-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="2 2" aria-hidden="true"><path d="M8 14V2M3.5 6.5 8 2l4.5 4.5"/></svg>
+          <span id="earth-text">Earth</span>
+        </div>
+        <div class="ov-sub">At touchdown · arrows point to azimuth</div>
+      </div>
+
+      <div class="ov ov--tr" id="ov-north" hidden>
+        <svg id="north-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5" aria-hidden="true"><path d="M8 15V1M4 5l4-4 4 4"/></svg>
+        <span><span class="ov-label">Local </span>North</span>
+      </div>
+
+      <div class="ov ov--br" id="ov-scale" hidden>
+        <div class="scale-bar" id="scale-bar"></div>
+        <span id="scale-label">1 km</span>
+      </div>
+
+      <div class="ov ov--bl" id="ov-zoom" hidden>
+        <button type="button" class="zoom-btn" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="zoom-btn" id="zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" class="zoom-btn" id="zoom-reset" aria-label="Reset view" style="font-size:12px">⟲</button>
+      </div>
+
+      <div class="map-loading" id="map-loading"><span class="spinner" aria-hidden="true"></span>Analyzing…</div>
+      <div class="map-tip" id="map-tip" hidden></div>
+    </div>
+
+    <div class="legend" id="legend">
+      <div class="eyebrow">Legend</div>
+      <span class="legend-item"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="#3ddc84" stroke="#000"/></svg><span><strong>Viable</strong> · meets every limit</span></span>
+      <span class="legend-item"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1 L11.2 10.6 H0.8 Z" fill="#ff9f43" stroke="#000" stroke-linejoin="round"/></svg><span><strong>Risky</strong> · close to a limit or sunset in mission</span></span>
+      <span class="legend-item"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2 L10 10 M10 2 L2 10" stroke="#000" stroke-width="4.4" stroke-linecap="round"/><path d="M2 2 L10 10 M10 2 L2 10" stroke="#ff6b6b" stroke-width="2.4" stroke-linecap="round"/></svg><span><strong>Not viable</strong> · breaks a limit</span></span>
+      <span class="legend-item" id="legend-coarse" hidden><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.2" fill="none" stroke="#000" stroke-width="3"/><circle cx="6" cy="6" r="4.2" fill="none" stroke="#fff" stroke-width="1.5"/></svg><span>Hollow · slope from 20 m data, may underestimate</span></span>
+      <span class="legend-item"><span aria-hidden="true" style="display:inline-block;width:22px;height:12px;border:1px dashed #fff;border-radius:50%"></span><span>Landing ellipse</span></span>
+      <span class="legend-item"><svg width="16" height="16" viewBox="0 0 44 44" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><circle cx="22" cy="22" r="9"/><path d="M22 2v11M22 31v11M2 22h11M31 22h11"/></svg><span>Target</span></span>
+    </div>
+    <p class="legend-note">Assumes the lander is equally likely to land anywhere inside the ellipse. Hover or tap a point for details.</p>
+
+    <section class="timeline" id="timeline" aria-labelledby="timeline-title" hidden>
+      <div class="timeline-head">
+        <div class="section-head">
+          <div class="eyebrow">Mission timeline · target point</div>
+          <h2 class="h2" id="timeline-title">Sun &amp; Earth vs. terrain horizon</h2>
+        </div>
+        <div class="chart-legend" id="chart-legend"></div>
+      </div>
+      <div class="chart-box"><canvas id="timeline-canvas" role="img" aria-label="Mission timeline chart"></canvas></div>
+      <p class="caption" id="timeline-caption">The Sun barely rises here: a small hill can block it. When the yellow line drops into the grey terrain area, the lander is in shadow.</p>
+    </section>
+
+    <details class="notes" id="notes" open hidden>
+      <summary id="notes-summary">Model notes</summary>
+      <ul id="notes-list"></ul>
+    </details>
+  </section>
+
+  <!-- ================= Results ================= -->
+  <aside class="panel panel--right" aria-label="Analysis results">
+    <section class="survival-wrap" aria-labelledby="results-title" aria-live="polite" style="display:flex;flex-direction:column;gap:20px">
+      <div class="eyebrow" id="results-title">Step 03 · Results</div>
+      <div class="survival">
+        <div class="survival-top">
+          <div class="label-strong" style="display:flex;align-items:center;gap:8px">Survival probability
+            <button type="button" class="info-btn" data-tip="If the lander touches down at a random spot inside the ellipse, this is the chance that spot meets every limit you set (only points marked viable count)." aria-label="About survival probability">i</button>
+          </div>
+          <span id="verdict" hidden></span>
+        </div>
+        <div class="survival-row">
+          <div class="big-num" id="survival-num">—</div>
+          <div class="caption">of landing points inside<br>the ellipse are viable</div>
+        </div>
+        <div class="dist-bar" id="dist-bar" aria-hidden="true"></div>
+        <div class="counts" id="counts"></div>
+        <div class="caption num" id="incl-risky"></div>
+      </div>
+
+      <ul class="metrics" id="metrics"></ul>
+      <div class="checks-summary num" id="checks-summary"></div>
+    </section>
+
+    <section class="delay" id="delay" aria-labelledby="delay-title" hidden>
+      <div class="delay-row">
+        <div class="label-strong" id="delay-title" style="display:flex;align-items:center;gap:8px">Launch-delay tolerance
+          <button type="button" class="info-btn" data-tip="Missions slip. This is how many days the landing can be postponed while the target point stays viable (or risky) every day. The curve shows the survival probability of the whole ellipse for each day of delay." aria-label="About launch-delay tolerance">i</button>
+        </div>
+        <div class="delay-val" id="delay-val">—</div>
+      </div>
+      <svg class="spark" id="spark" role="img" aria-label="Survival probability versus days of delay"></svg>
+      <div class="caption">Launch slipped? See how long this target stays viable.</div>
+    </section>
+
+    <section aria-labelledby="recs-title" style="display:flex;flex-direction:column;gap:12px" id="recs-section" hidden>
+      <div class="section-head" style="gap:2px">
+        <div class="eyebrow">Step 04</div>
+        <h2 class="h2" id="recs-title">Recommended nearby</h2>
+        <div class="caption">Targets with a higher survival probability. Select one to re-run there.</div>
+      </div>
+      <div class="recs" id="recs"></div>
+    </section>
+  </aside>
+</main>
+
+<footer class="footer">
+  <div id="footer-sources"><span class="eyebrow-w">Data sources</span> · <span id="sources-text">Loaded from the analysis response</span></div>
+  <div>LunaScout — NASA Space Apps Challenge 2026</div>
+</footer>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+<dialog class="modal" id="about" aria-labelledby="about-title">
+  <div class="modal-inner" id="about-body"></div>
+</dialog>
+
+</body>
+</html>
