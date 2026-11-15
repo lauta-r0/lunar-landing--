@@ -12,7 +12,7 @@ Tick each box only after you have checked it yourself.
 - [ ] All 4 members are **confirmed on the team at the same Local Event** (Space Apps profile → team page). `[TO VERIFY]` in the guide whether every member must confirm.
 - [ ] All required form fields are filled (project name, summary, demo link, final-project link, detailed description, SI use, NASA data, partner data/references). Text comes from `project_page.md`.
 - [ ] Every placeholder is replaced (`[DEMO LINK]` is the only one left) and no `[TO VERIFY]` is left in anything submitted. Team: CD Band.
-- [ ] The summary is about 150–200 words and the detailed description is 600–900 words (`project_page.md` has 199 and 892).
+- [ ] The summary is about 150–200 words and the detailed description is 600–900 words (`project_page.md` has 199 and 900).
 - [ ] **Everything is in English** (form, README, slides, subtitles, UI). Only the video voice-over may be in Spanish.
 
 ## B. Demo (choose one; the other is not submitted)
@@ -47,7 +47,10 @@ Tick each box only after you have checked it yourself.
 - [ ] No sample or made-up data is shown as real. The only sample data is `fixtures/sample_response.json`, behind the **SAMPLE DATA — API OFFLINE** badge.
 - [ ] Athena wording is the validated one: *off target by a few hundred metres, tipped over in a ~20 m crater, mission ended about 12–13 h later.* **Never** "landed in shadow", "LunaScout would have predicted/saved Athena", or "validated against observations" (`docs/validation.md` §10).
 - [ ] Numbers used are only those in `docs/validation.md` §10, our own app output, or cited sources. Fonts, libraries and data sources are listed with licences/attribution.
-- [ ] README screenshot (`docs/ui-desktop.png`, live run of 15 Nov 2026, 17.7 %) still matches the final deployment; retake it if the UI or numbers change.
+- [ ] README screenshots still match the final deployment. **Both need a retake:** `docs/ui-desktop.png` (Sunlit slope, 17.7 %) and `docs/ui-best-sites.png` still show the old quick-pick buttons (IM-2 Athena, Summit plateau, Western bench, Crater floor, Sunlit slope), replaced in PR #15 by Mons Mouton, VIPER Mission Area and Nobile Rim 1. The 17.7 % figure itself is unchanged on schema 1.6.
+- [ ] **"Find best sites"** works on https://lunascout.web.app: heatmap and five ranked sites, labelled "Approximate"; clicking a site runs the full analysis. Checked through the API on 15 Nov 2026 (schema 1.6, defaults, all data): best site 79.5 % at −85.1436, 32.69785.
+- [ ] **Quick picks** show exactly Mons Mouton, VIPER Mission Area and Nobile Rim 1, and each runs. Nobile Rim 1 gives **0 %** on the default settings; that is a real result, not an error.
+- [ ] **Athena by hand** (it is no longer a quick pick): latitude −84.79059, longitude 29.19567, landing 2025-03-06 17:28 UTC (the analysis rounds to 17:00), 10 days → about **92.7 % viable** on 20 m data (live, 15 Nov 2026). Say why it shows viable (`docs/athena_replay.md`): the ~20 m crater is below the data resolution and the lander is assumed upright.
 - [ ] Code licence decided and a `LICENSE` file added (MIT proposed).
 
 ## E. Submit

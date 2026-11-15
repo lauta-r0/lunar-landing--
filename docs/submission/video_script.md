@@ -25,10 +25,12 @@ The alternative is the 7-slide deck in `slides_outline.md`; the team chooses on 
 
 Use the app at https://lunascout.web.app with its defaults: landing **2027-10-12 14:00 UTC**, 7 days, ellipse 1000 × 600 m, azimuth 0, max darkness 50 h, max comms gap 72 h, min Earth 50 %, max slope 8°.
 
-1. Quick pick **"Sunlit slope"** (−85.48962, 30.66935) → **Run analysis**.
-2. Result checked on 15 Nov 2026 through the live API (schema 1.5): 66 viable / 27 risky / 280 not viable of 373 sampled points → **survival ≈ 18 %** (0.177), target verdict **not viable**. Recommended nearby: **1.0 km NE of target**, listed at 0.596 (+42 points).
+1. Type the target **−85.48962, 30.66935** ("Sunlit slope") into Latitude / Longitude → **Run analysis**. It is no longer a quick pick: since PR #15 the quick picks are Mons Mouton, VIPER Mission Area and Nobile Rim 1. Prefill the fields before the take and cut the typing, so the shot starts on the **Run analysis** click.
+2. Result re-checked on 15 Nov 2026 through the live API (schema 1.6, same numbers as on 1.5): 66 viable / 27 risky / 280 not viable of 373 sampled points → **survival ≈ 18 %** (0.177), target verdict **not viable**. Recommended nearby: **1.0 km NE of target**, listed at 0.596 (+42 points).
 3. Click the first recommendation → it re-runs at (−85.46624, 30.96435): **≈ 58 %** (0.575, 218 viable / 43 risky / 118 not viable), verdict **viable**, delay tolerance 8 days.
 
+> Why not a quick pick: VIPER Mission Area (22.3 %, verdict viable) has a "1.0 km SW" card at 56 % whose re-run gives 42.9 %, and Nobile Rim 1 is 0 % on these defaults with no recommendation that helps the story. Sunlit slope keeps the clearest contrast (not viable 18 % → viable 58 %).
+>
 > `[TO VERIFY]` Numbers can move with a redeploy. **Record first, then write the voice-over numbers from what is on the screen** (and edit the subtitles to match). Note that the recommendation card shows a slightly different figure (59.6 %) from the re-run at that point (57.5 %) because the two evaluate different sample grids; use the re-run number on screen and say "about".
 
 ## 2. Shot-by-shot
@@ -40,7 +42,7 @@ Word budget: **≈ 2.5 words/second → 75 words for 30 s**. This script uses **
 | 1 | 0:00–0:02 | Black title card, text fades in. No NASA logos. | **CD Band** · ORT Uruguay · NASA Space Apps 2026 — *Lunar Landing Site Navigator* | *(none, 0 words)* | *(ninguna)* |
 | 2 | 0:02–0:05 | Slow zoom on a still of the south-pole terrain (our own hillshade from the app, not a NASA image). | **IM-2 "Athena" · March 2025** / A few hundred metres off target / Mission over within a day. Small print: *Hancock et al. 2026; SpacePolicyOnline* | "Athena landed off target. Mission over within a day." (9) | "Athena aterrizó desviada: misión terminada en un día." (8) |
 | 3 | 0:05–0:10 | Cut to the app's header, then the full screen. | **LunaScout** / *Plan for where you'll land, not where you aim.* | "LunaScout. Plan for where you'll land, not where you aim." (10) | "LunaScout. Planifica dónde aterrizarás, no hacia dónde apuntas." (8) |
-| 4a | 0:10–0:12 | Screen recording, 1080p: click quick pick **Sunlit slope**, press **Run analysis**. | Enter a target and a landing ellipse | "Enter a target and ellipse." (5) | "Elige un objetivo y una elipse." (6) |
+| 4a | 0:10–0:12 | Screen recording, 1080p: target −85.48962, 30.66935 already typed in, press **Run analysis**. | Enter a target and a landing ellipse | "Enter a target and ellipse." (5) | "Elige un objetivo y una elipse." (6) |
 | 4b | 0:12–0:16 | The ellipse fills with green ● / amber ▲ / red ✕ points; hover one point to show its tooltip. | Every point, hour by hour | "LunaScout checks every point against real terrain and Sun and Earth positions." (12) | "LunaScout evalúa cada punto con relieve real y posiciones del Sol y la Tierra." (14) |
 | 4c | 0:16–0:18 | **Zoom** on the survival number and the timeline (Sun vs. horizon). | **Survival ≈ 18 %** `[read from screen]` | "Survival: 18 percent." (3) | "Supervivencia: 18 %." (2) |
 | 4d | 0:18–0:20 | Click the first recommended target; the map re-centres and the number jumps. | **1 km NE → ≈ 58 %** `[read from screen]` | "One kilometre northeast: 58 percent." (5) | "Un kilómetro al noreste: 58 %." (5) |
@@ -100,5 +102,5 @@ Replace 18 / 58 with the numbers on screen when recorded.
 |---|---|
 | IM-2 off target by a few hundred metres (250 m IM; ~500 m Hancock) | https://spacepolicyonline.com/news/im-2-mission-ends-one-day-after-lunar-landing/ ; Hancock et al. 2026, doi:10.3847/PSJ/ae732f |
 | Mission ended about 12–13 h after touchdown | Same two sources |
-| Survival 18 % → 58 % | Our own live run, schema 1.5, 15 Nov 2026; re-read from the screen when recording |
+| Survival 18 % → 58 % | Our own live run, schema 1.6, 15 Nov 2026 (unchanged from 1.5); re-read from the screen when recording |
 | Real terrain, Sun and Earth positions | LRO LOLA (NASA GSFC PGDA / PDS), JPL Horizons; `docs/validation.md` |

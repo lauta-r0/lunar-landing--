@@ -22,9 +22,9 @@ Landers miss targets. At the pole, a few hundred metres can mean sun or shadow. 
 **Visual:** one simple diagram: a target dot, a dashed ellipse around it, an arrow to a different landing dot, and a Sun at 2° above a ridge. Small-print source line: Hancock et al. 2026; SpacePolicyOnline. *Do not draw Athena in shadow.*
 
 ### Slide 3 — The solution
-**Text (17 words):**
-LunaScout evaluates the whole landing ellipse, not one point: survival probability, launch-delay tolerance and better nearby targets.
-**Visual:** three large outputs side by side (cut from the app): the survival % ring, the delay-tolerance curve, the "Recommended nearby" card.
+**Text (20 words):**
+LunaScout evaluates the whole landing ellipse, not one point: survival probability, launch-delay tolerance, better nearby targets and the best sites region-wide.
+**Visual:** four outputs side by side (cut from the app): the survival % ring, the delay-tolerance curve, the "Recommended nearby" card and the best-sites heatmap with its ranked pins (`docs/ui-best-sites.png`; label it "Approximate").
 
 ### Slide 4 — How it works + NASA data
 **Text (24 words):**

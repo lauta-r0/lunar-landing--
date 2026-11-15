@@ -57,7 +57,7 @@ A lander also does not land exactly where it is aimed: it lands somewhere inside
 WHAT LUNASCOUT DOES
 LunaScout is a single-screen web app. You enter a target (latitude/longitude), a landing date and time (UTC), a mission length, a landing ellipse (semi-axes and orientation) and the lander's limits: longest darkness the battery survives, longest comms gap, minimum share of time with Earth in view, and maximum slope. LunaScout then answers one question: what is the probability that the mission survives where it will actually land?
 
-The map shows the ellipse covered with sample points, green (viable), amber (risky) or red (not viable), also marked with different shapes so colour is not the only cue. The right panel shows the survival probability, a pass/fail check for each limit, the launch-delay tolerance and recommended nearby targets that re-run with one click. A timeline shows the Sun's and Earth's elevation against the terrain horizon hour by hour. Everything is computed live on the server.
+The map shows the ellipse covered with sample points, green (viable), amber (risky) or red (not viable), also marked with different shapes so colour is not the only cue. The right panel shows the survival probability, a pass/fail check for each limit, the launch-delay tolerance and recommended nearby targets that re-run with one click. "Find best sites" ranks the best aim points region-wide on an approximate heatmap. A timeline shows the Sun's and Earth's elevation against the terrain horizon hour by hour.
 
 HOW IT WORKS (5 STEPS)
 1. Terrain. Real LRO LOLA topography around the target: 5 m/px near Mons Mouton (NASA GSFC PGDA), and 20 m and 40 m/px south-polar elevation models farther out.
@@ -68,7 +68,7 @@ HOW IT WORKS (5 STEPS)
 
 BENEFITS
 - Fast re-evaluation when schedules slip: a typical analysis takes well under a second of server time, so planners can test dates, limits and sites interactively.
-- Planning for where the lander will land, not where it is aimed: results cover the whole ellipse, and the app flags better nearby targets.
+- Planning for where the lander will land, not where it is aimed: results cover the whole ellipse, and the app flags better targets nearby and region-wide.
 - A shared view for science and engineering teams: one screen shows terrain, Sun, Earth and limits in plain language.
 - Educational value: the map and timeline show why a few degrees of Sun elevation and a few hundred metres matter at the pole.
 
