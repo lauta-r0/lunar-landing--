@@ -186,6 +186,8 @@ but share Horizons' assumption, so they cannot detect this; the bound above is a
   the mission *risky*, and the headline probability counts only *viable*. For missions of a week or more at the
   pole, the headline is often 0 % while the incl.-risky value is not (e.g. 14-day runs from 2026-01-20: 0–10 %
   viable). See issue P1-4.
+  **Resolved in PR #10 (schema 1.4):** a sunset no longer makes a point risky; darkness is judged only by
+  `longest_dark_h` vs. `max_dark_h`. The observation above describes the behavior before that change (schema 1.3).
 - **Delay curve:** `delay_curve[0]` equals the summary in every scenario; `delay_tolerance_days` follows the
   contract rule; `delay_curve[k]` equals a fresh run k days later (0.393, 0.182, 0.117 both ways).
 
@@ -258,11 +260,24 @@ Live UI (in-app browser, 1440 × 900 and 375 × 812):
    see 'Including risky points'." Option for later (contract change, needs team approval): only mark `sunset` risky
    when the darkness exceeds `(1 − risk_margin) × max_dark_h`.
 
+   > **RESOLVED in PR #10 (CONTRACT 1.4, 2026-11-15).** The contract change suggested above was approved and
+   > implemented: the `sunset` risk reason was removed, so darkness is judged only by `longest_dark_h` vs.
+   > `max_dark_h` (not viable above the limit, risky within `risk_margin` of it). `hours_until_sunset` stays as an
+   > informative metric (`pass: null`, `checks_total` is 6 by default). On the summit plateau, 14-day mission, the
+   > headline probability now goes 0.083 / 0.125 / 0.336 / 0.344 for `max_dark_h` 50 / 100 / 200 / 400 h (before:
+   > 0.073 at every value). The tooltip workaround is not needed. Tests: `engine/tests/test_metrics.py`,
+   > `engine/tests/test_analyze.py`.
+
 **P2 — polish**
 1. Malformed `landing_utc` → 400 `invalid_request`; CONTRACT 4.5 says 422 (`api/main.py`). Either return 422 or
    document the 400 in CONTRACT.
 2. No gzip on 140 KB JSON (`api/main.py`): `app.add_middleware(GZipMiddleware, minimum_size=1000)`. Wall time is
    dominated by the Firebase → Cloud Run hop (~0.8 s); still < 3 s.
+
+   > **RESOLVED in PR #10 (schema 1.4).** `GZipMiddleware(minimum_size=1000)` was added to `api/main.py`; responses
+   > over 1 KB are gzip-compressed when the client sends `Accept-Encoding: gzip` (test:
+   > `api/tests/test_api.py::test_analyze_is_gzip_compressed_and_lossless`). Effective on the live service after
+   > the redeploy.
 3. Landing dates after ~2028-11-24 are refused with the default 30-day delay range although they are inside the
    advertised ephemeris (`engine/analyze.py`): clip the delay curve to the available ephemeris and warn instead.
 4. After a failed run the status pill still says "LIVE · LAST RUN hh:mm" (`web/js/app.js`).
@@ -286,7 +301,7 @@ Live UI (in-app browser, 1440 × 900 and 375 × 812):
 - No thermal model (darkness duration is the proxy), no relay satellites, no eclipses, no descent constraints.
 - Ephemeris table 2025-01-01 to 2028-12-31, one reference direction (Earth parallax ≤ 0.013° within 150 km).
 - DEM height error (0.3–0.5 m RMS on the tile) is not propagated.
-- Any sunset during the mission makes a point "risky", so the headline probability is conservative for long missions.
+- Any sunset during the mission makes a point "risky", so the headline probability is conservative for long missions. *(Resolved in PR #10, schema 1.4: darkness is judged only by `longest_dark_h` vs. `max_dark_h`; this was the state of the validated deployment, schema 1.3.)*
 
 ---
 

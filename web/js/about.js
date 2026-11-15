@@ -37,7 +37,7 @@ export function renderAbout(el, resp, meta) {
         <li><strong>Horizon mask.</strong> For every sample point in the ellipse, the elevation of the terrain horizon in each direction (1° bins), using great-circle ray marching with the Moon’s curvature.</li>
         <li><strong>Sun and Earth.</strong> Positions from JPL Horizons, converted to azimuth and elevation at each point.</li>
         <li><strong>Hourly simulation.</strong> Over the mission, each hour checks whether the Sun’s center and Earth’s center are above the local terrain horizon.</li>
-        <li><strong>Classification.</strong> Each point is viable, risky (within the risk margin of a limit, or a sunset during the mission) or not viable (slope, darkness vs. battery, comms gap, Earth time, no Sun at touchdown). Survival probability = viable points ÷ all points.</li>
+        <li><strong>Classification.</strong> Each point is viable, risky (within the risk margin of a limit: darkness vs. battery, comms gap, slope or Earth time) or not viable (slope, darkness vs. battery, comms gap, Earth time, no Sun at touchdown). Survival probability = viable points ÷ all points.</li>
       </ol>
     </section>
 

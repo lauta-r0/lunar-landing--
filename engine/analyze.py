@@ -34,7 +34,7 @@ from .errors import EngineError
 from .grid import GridSet, HorizonGrid, load_grids
 from .metrics import CLASS_NAMES, NOT_VIABLE, RISKY, VIABLE
 
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EPHEMERIS_FILE = REPO_ROOT / "data" / "ephemeris" / "sun_earth_vectors.npz"
 
@@ -630,8 +630,7 @@ def _analyze(eng: _Engine, req: dict) -> dict:
          "display": _fmt_dh(gap_h), "limit_display": f"≤ {limits['max_comm_gap_h']:g} h",
          "pass": bool(gap_h <= limits["max_comm_gap_h"])},
         {"id": "hours_until_sunset", "label": "Time until sunset", "value": _r(sunset_h, 1), "unit": "h",
-         "display": _until(sunset_h), "limit_display": f"≥ mission ({_fmt_dh(mission_h)})",
-         "pass": bool(sunset_h >= mission_h)},
+         "display": _until(sunset_h), "limit_display": "Reference", "pass": None},   # v1.4: informative
         {"id": "hours_until_earthset", "label": "Time until Earthset", "value": _r(earthset_h, 1), "unit": "h",
          "display": _until(earthset_h), "limit_display": "Reference", "pass": None},
         {"id": "area_over_slope", "label": "Ellipse area over max slope", "value": _r(area_pct, 1), "unit": "%",
