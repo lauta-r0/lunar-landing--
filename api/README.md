@@ -1,6 +1,6 @@
 # LunaScout API
 
-FastAPI wrapper around the terrain engine (CONTRACT section 4, schema 1.5).
+FastAPI wrapper around the terrain engine (CONTRACT section 4, schema 1.6).
 
 ```bash
 pip install -r api/requirements.txt          # server
@@ -17,6 +17,7 @@ Runtime data (git-ignored, must exist locally): `data/raw/*.tif`, `data/derived/
 | `GET /api/health` | `{"status","engine_ready","schema_version"}` |
 | `GET /api/meta` | coverage, curated sites, defaults, input limits |
 | `POST /api/analyze` | analysis (request body: CONTRACT 4.3). Headers `X-Cache: HIT\|MISS`, `X-Compute-Ms` |
+| `POST /api/best-sites` | region-wide scan (CONTRACT 4.7): approximate heatmap + best aim points. Same headers; the engine runs one scan at a time; peak memory about 710 MB with all data loaded |
 | `GET /api/static/hillshade.png` | LOLA hillshade for the map |
 
 Responses over 1 KB are gzip-compressed (`Content-Encoding: gzip`) when the client sends `Accept-Encoding: gzip`.

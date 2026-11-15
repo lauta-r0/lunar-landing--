@@ -21,12 +21,12 @@ def client():
 def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "engine_ready": True, "schema_version": "1.5"}
+    assert r.json() == {"status": "ok", "engine_ready": True, "schema_version": "1.6"}
 
 
 def test_meta(client):
     m = client.get("/api/meta").json()
-    assert m["schema_version"] == "1.5"
+    assert m["schema_version"] == "1.6"
     assert m["defaults"]["limits"]["min_sun_margin_deg"] == 0
     assert "min_sun_margin_auto_deg" not in m["defaults"]
     assert m["map"]["hillshade_url"] == "/api/static/hillshade.png"
@@ -51,7 +51,7 @@ def test_analyze_default_and_cache(client):
     body = r.json()
     for k in TOP_KEYS:
         assert k in body, k
-    assert body["schema_version"] == "1.5" and body["is_sample"] is False
+    assert body["schema_version"] == "1.6" and body["is_sample"] is False
     assert body["inputs"]["limits"]["min_sun_margin_deg"] == 0
     meta_map = client.get("/api/meta").json()["map"]
     for k in ("hires_bounds_xy_m", "hires_label", "coarse_label"):
@@ -139,3 +139,64 @@ def test_analyze_is_gzip_compressed_and_lossless(client):
     assert zipped.json()["summary"] == plain.json()["summary"]      # TestClient (httpx) decodes the gzip body
     small = client.get("/api/health", headers={"Accept-Encoding": "gzip"})
     assert "content-encoding" not in small.headers                   # under 1 KB: not compressed
+
+
+# --------------------------------------------------------------------------- best sites
+def test_best_sites_default_cache_and_payload(client):
+    app.state.cache.clear()
+    r = client.post("/api/best-sites", json={}, headers={"Accept-Encoding": "identity"})
+    assert r.status_code == 200 and r.headers["X-Cache"] == "MISS"
+    assert len(r.content) < 300_000                                   # payload limit, before gzip
+    body = r.json()
+    assert body["is_sample"] is False and body["inputs"]["region"] == "5m"       # default: the most reliable data
+    heat = body["heatmap"]
+    assert heat["approximate"] is True and heat["cell_m"] == 200.0
+    import base64
+    raw = base64.b64decode(heat["data_b64"])
+    assert len(raw) == heat["width"] * heat["height"]
+    sites = body["sites"]
+    assert 0 < len(sites) <= 5 and [s["rank"] for s in sites] == list(range(1, len(sites) + 1))
+    # a listed site shows the survival probability of its full analysis
+    top = sites[0]
+    full = client.post("/api/analyze", json={"target": {"lat": top["lat"], "lon": top["lon"]}}).json()
+    assert top["matches_full_analysis"] is True
+    assert full["summary"]["survival_probability"] == top["survival_probability"]
+    r2 = client.post("/api/best-sites", json={"region": "5m", "mission_days": 7})    # same normalized request
+    assert r2.headers["X-Cache"] == "HIT" and r2.json()["sites"] == sites
+
+
+def test_best_sites_region_and_empty_state(client):
+    fine = client.post("/api/best-sites", json={"region": "5m"}).json()
+    coarse = client.post("/api/best-sites", json={"region": "20m"}).json()
+    both = client.post("/api/best-sites", json={"region": "all"}).json()
+    assert fine["sites"] and coarse["sites"] and both["sites"]
+    # the region is judged on the whole ellipse (>= 95% on that data), so no site sits on the tile edge
+    tile_top = fine["map"]["hires_bounds_xy_m"][3]
+    for s in fine["sites"]:
+        assert s["fine_fraction"] >= 0.95 and s["y_m"] <= tile_top - 500.0, s
+    for s in coarse["sites"]:
+        assert s["coarse_fraction"] >= 0.95 and s["data_resolution_m"] == [20.0] and s["y_m"] >= tile_top + 500.0, s
+    # the seam band belongs to neither filtered region, only to "all"
+    assert fine["summary"]["n_cells"] + coarse["summary"]["n_cells"] < both["summary"]["n_cells"]
+    # "all" ranks by the real survival probability only (no adjustment for the data resolution)
+    probs = [s["survival_probability"] for s in both["sites"]]
+    assert probs == sorted(probs, reverse=True)
+    assert all("rank_score" not in s for s in both["sites"])
+    assert any("20 m terrain" in w for w in both["warnings"])
+    assert not any("order of probability" in w for w in both["warnings"])
+    # limits no site can meet (2027-03-10 is a dark period at Mons Mouton): the list is empty, not an error
+    none = client.post("/api/best-sites", json={
+        "landing_utc": "2027-03-10T14:00:00Z",
+        "limits": {"max_dark_h": 1, "max_comm_gap_h": 1, "min_earth_pct": 100, "max_slope_deg": 1}})
+    assert none.status_code == 200 and none.json()["sites"] == []
+
+
+@pytest.mark.parametrize("bad", [
+    {"region": "moon"},
+    {"max_sites": 0},
+    {"target": SUMMIT},                     # the scan has no target
+    {"mission_days": 0},
+    {"limits": {"max_slope_deg": 90}},
+])
+def test_best_sites_422_on_bad_input(client, bad):
+    assert client.post("/api/best-sites", json=bad).status_code == 422

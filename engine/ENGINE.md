@@ -95,6 +95,7 @@ coarser pixel; `scripts/prepare_regional_dem.py`):
 So the levels agree to a quarter of a meter on average and are not misregistered; each regional
 level is shifted by +0.25 m (`vertical_correction_m`) so its mean matches the tile. Across the edge
 of a finer level the heights are blended linearly over 500 m, so there is no step at the seam.
+Slopes are not blended: each point takes the slope raster of one level (see "Seam check" below).
 
 ### Coverage of the IM-2 (Athena) sites
 
@@ -158,7 +159,7 @@ files the engine still runs on the 5 m tile alone (or force that with `LUNASCOUT
 | Module | Role |
 |---|---|
 | `geo.py` | lat/lon <-> map x/y, great-circle helpers, local north/east in the map plane |
-| `terrain.py` | loads the terrain levels once (`Terrain`, `LayeredTerrain`); `height_at`, `slope_at` (bilinear, blended at seams), `height_nearest`, `make_hillshade` |
+| `terrain.py` | loads the terrain levels once (`Terrain`, `LayeredTerrain`); `height_at` (bilinear, blended at seams), `slope_at` (bilinear, one level per point), `slope_layer_index_at`, `height_nearest`, `make_hillshade` |
 | `horizon.py` | horizon mask of one observer (the core algorithm) |
 | `grid.py` | loads the precomputed horizon grids (`HorizonGrid`, `GridSet` = fine + regional) |
 | `metrics.py` | per-point mission metrics and the classification rules of CONTRACT 4.4 |
@@ -303,6 +304,131 @@ descriptive, not official names. The two IM-2 entries are real landing sites (so
 | `sunlit_slope` | Sunlit slope (steep) | -85.48962, 30.66935 | well lit but 12 degree slope |
 | `im2_athena_intended` | IM-2 Athena intended site | -84.78, 29.13 | LROC featured image "IM-2 Landing Region" |
 | `im2_athena_actual` | IM-2 Athena actual touchdown | -84.7906, 29.1957 | Wikipedia "IM-2" / "Mons Mouton", citing LROC |
+
+### Best sites (`best_sites.py`, `POST /api/best-sites`)
+
+"Where should this mission aim?" for one date and one set of mission settings, over the whole
+analyzable area. The interface is CONTRACT 4.7 (schema 1.6, additive); it is summarized here.
+
+**Request**: the analyze request without `target` (all fields optional, same defaults), plus
+`region` and `max_sites` (1-10, default 5). Only `risk_margin` and `observer_height_m` are read
+from `options`. `region` is judged on the **whole ellipse**, not on its center:
+`"5m"` (default, the most reliable data) keeps an aim point only if at least 95% of its ellipse is
+on the 5 m tile, `"20m"` only if at least 95% is on the 20 m DEM outside the tile, `"all"` keeps
+every aim point (`REGION_MIN_SHARE`).
+
+**Response**: `inputs` (normalized request), `heatmap` (`encoding: "uint8-base64"`, `width`,
+`height`, `cell_m`, `bounds_xy_m` = outer cell edges, `value_max: 254`, `invalid_value: 255`,
+`approximate: true`, `data_b64`: row-major bytes, **row 0 = north edge**; byte v = probability
+v / 254, 255 = invalid cell), `summary` (cell and node counts), `sites` (`rank`, `name`, `lat`,
+`lon`, `x_m`, `y_m`, `survival_probability`, `survival_probability_incl_risky`, `n_points`,
+`data_resolution_m`, `fine_fraction`, `coarse_fraction`, `matches_full_analysis`,
+`heatmap_probability`), `map`,
+`warnings`, `sources`, plus the usual `schema_version`, `is_sample`, `computed_utc`, `compute_ms`.
+Errors: `out_of_ephemeris_range`, `invalid_request`, `best_sites_unavailable` (no horizon grid), 422.
+
+**Method**
+1. **Stride.** Both precomputed horizon grids are read on one lattice every **200 m**
+   (`STRIDE_M`): 121 x 211 cells, about 25,500 nodes (every 4th node of the 50 m grid, every 2nd
+   of the 100 m grid).
+2. **Node classification** with exactly the rules of CONTRACT 4.4 (same `_visibility`,
+   `point_metrics`, `classify` as `analyze`). Two exact shortcuts: a node over the slope limit, or
+   dark at the touchdown hour, can never be viable, so the hourly simulation runs only for the rest
+   (about 9,700 nodes for the default request). Work is split in chunks of 250,000 point-hours over
+   `LUNASCOUT_THREADS` threads.
+3. **Heatmap** = "survival probability if you aim here": the share of viable nodes inside the
+   user's ellipse centered on each cell (FFT correlation with the ellipse footprint; one footprint
+   per 2 degree bin of local north, which turns about 16 degrees across the region). The same
+   correlation gives the share of the ellipse on the 5 m tile. A cell is invalid when that share
+   fails the `region` rule or less than 80% of its ellipse is inside the analyzable area (the
+   coverage rule of `analyze`).
+4. **Sites.** Greedy selection of maxima at least 1.5 km (or 2 x semi-major) apart, ordered by
+   the heatmap probability, then by the mean probability around the cell (the data resolution
+   plays no part in this step). The 24 best candidates are
+   **re-evaluated with the sampling of `analyze`** and re-ranked, so a listed probability is the
+   number the full analysis shows for that target (`matches_full_analysis: true`; tested). The
+   `region` rule is applied again on the exact ellipse (600 points spread over its area). Only
+   sites above 0% are listed: an empty list means no site meets the limits for that date.
+5. **Ranking and labels.** `fine_fraction` / `coarse_fraction` = share of the ellipse area on the
+   5 m tile / on the 20 m DEM. Sites are ranked by their **real survival probability only**, for
+   every `region`: nothing is added or subtracted for the data resolution (team decision: real
+   data only, no adjustment constants). Equal probabilities go to the larger `fine_fraction`. The
+   UI labels a site by its composition: "5 M · 100%", "20 M · 100%", "MIXED · 40% 5 M".
+
+**Assumptions and honesty**
+- The heatmap is approximate (200 m sampling: about 47 nodes in the default ellipse, against up to
+  400 in the full analysis). The UI labels it "Approximate (coarse sampling); click a site for the
+  full analysis".
+- Results depend on the landing date and the mission settings; uniform landing distribution.
+- No delay curve: the scan covers the landing date only.
+- Ellipses smaller than about 5 lattice nodes are scanned on a 530 m wide disc (a warning says so),
+  and their sites have `matches_full_analysis: false` (the full analysis computes horizons on the
+  fly). The same flag is false when `observer_height_m` differs from the grid's 2 m.
+- The 20 m DEM cannot show craters and slopes smaller than about 40 m, so "5 M ONLY" is the
+  default and "ALL DATA" carries the note "Includes 20 m terrain, which can hide small craters and
+  slopes". The warning is the only treatment of 20 m data: its probabilities are not adjusted, so
+  with "ALL DATA" the flatter area north of the tile can fill the list. It scores higher mostly because
+  it is flatter terrain and not because of the coarser data (numbers in "Seam check").
+- Never served from the fixture: with the API down the UI shows "Unavailable offline".
+
+**Timings** (same laptop as section 9, `LUNASCOUT_THREADS=2`, API server and a browser running)
+
+| Case | Time |
+|---|---|
+| Default request (7 days, 1000 x 600 m, `region: "5m"`) | 0.3 to 0.7 s |
+| Same, `region: "all"` | 0.4 to 0.7 s |
+| `region: "all"`, 30 days, default limits (nothing viable) | 0.9 to 2.0 s |
+| `region: "all"`, 30 days, every limit relaxed (worst case, 16,358 nodes simulated) | 1.8 to 4.1 s |
+| `region: "all"`, 5 x 5 km ellipse | 0.7 s |
+| Identical request (cache) | about 10 ms |
+
+**Memory** (Windows working set, real data loaded): 646 MB after start-up and one analysis, peak
+**706 MB** after all the cases above (start-up alone peaks at 689 MB). The scan adds a few tens of
+MB because the visibility arrays are chunked, and the engine runs one scan at a time
+(`best_sites._LOCK`). Well under the 2 GiB Cloud Run limit. JSON payload: 37 KB before gzip
+(limit 300 KB).
+
+### Seam check (5 m tile / 20 m DEM, y = 131 km)
+
+The only DEM seam inside the analyzable area is the north edge of the 5 m tile (the other three
+edges are in the 1 km margin). Question: is the bright band of the best-sites heatmap along that
+edge, and the sites that lined up on it, real terrain or an artifact? Measured on 2027-10-12
+14:00, 7 days, default limits (`row` = all 241 grid nodes at that y).
+
+| Check | Result |
+|---|---|
+| Where the first version put its "5 M ONLY" sites | 3 of 5 exactly on the last tile row (y = 131.0 km). Their sample points: 88 of 189 (47%) outside the tile |
+| Viable nodes per row | 0.25 (y 129.0..130.4 km), 0.37 (130.5..131.0), 0.54 (131.1..131.6), 0.56 (131.7..133.0) |
+| Mean slope per row, from the 20 m raster on both sides | 8.2..10.0 deg at 129.0..130.2 km, 6.8 deg at 130.9, 6.1 deg at 131.1, 5.4..6.6 deg beyond |
+| Slope <= 8 deg, whole tile, same 58,081 nodes | 23.1% with the 5 m raster, 23.2% with the 20 m raster |
+| Rows 130.1..130.9 km re-run as if they were 20 m data (20/40 m horizons + 20 m slope, 847 nodes) | viable 32.8% -> 34.0%; 8.7% of the nodes change class, in both directions |
+| Horizon, grid vs. recomputed | max difference 0.008 deg (float16 storage) |
+| Horizon, all levels vs. 20/40 m only, within 100 m of the edge | rms 0.02..0.05 deg, 0.00..0.03% of Sun point-hours differ (0.43 deg and 1% at 600 m inside: the 5 m near field) |
+| Height, 5 m minus 20 m level | mean -0.04 m at y = 130.0 km, +0.06 m at 130.75, +0.82 m in the last 10 m; composited step across the edge <= 0.33 m |
+| Lattice alignment | 50 m grid ends at y = 130.0 km, 100 m grid continues at 130.2 km: no gap, no duplicate row |
+
+Conclusion: **no artifact in the illumination, the heights or the grids**. The terrain north of
+the tile is flatter (the 20 m raster itself shows it on both sides of the edge), so more nodes pass
+the slope limit there, and the ellipse footprint spreads that step over about 2 km, which is the
+brightening toward the edge. The sites lined up on the edge because the region filter looked at
+the ellipse center: the last "5 m" row was the best one precisely because half of its ellipse was
+on the flatter 20 m side. Fixed by the 95% ellipse rule above.
+
+Two real defects were found at the seam and fixed at the source (`terrain.py`):
+- **Slope was blended across the seam.** `slope_at` feathered the 5 m and 20 m slope rasters over
+  the last 500 m inside the tile, like the heights. A slope is a per-point limit, not a field rays
+  travel through, so now each point takes the slope raster of one level (the finest that covers
+  it). In the band this changed the class of 13 of 847 nodes (1.5%).
+- **The label did not match the data.** Nodes in that band were labelled 5 m (`slope_dem_m: 5`)
+  while their slope was 0% (the edge row) to 80% from the 5 m raster. `slope_layer_index_at` now
+  names the raster the slope comes from, and the engine uses it for `slope_dem_m`, `slope_coarse`
+  and the best-sites composition; the edge row itself (beyond the last 5 m pixel center) is 20 m.
+- The node slopes of the horizon grids are re-read from the rasters when the engine starts, so the
+  stored `slope_deg.npy` (written with the old blend) needs no recomputation.
+
+Tests: `test_slope_is_not_blended_across_the_seam_and_the_label_matches`,
+`test_real_grid_slopes_come_from_one_dem_at_the_north_seam`,
+`test_region_uses_the_ellipse_composition_not_its_center`.
 
 ## 6. Assumptions
 

@@ -112,3 +112,47 @@ def test_real_regional_levels_match_the_tile():
     ys = np.linspace(130000.0, 132000.0, 401)
     z = t.height_at(np.full(ys.size, 75000.0), ys)
     assert np.all(np.isfinite(z)) and np.max(np.abs(np.diff(z))) < 10.0
+
+
+def test_slope_is_not_blended_across_the_seam_and_the_label_matches():
+    """Heights are feathered over 500 m at the edge of the finer level, slopes are not: each point
+    takes the slope raster of ONE level, and slope_layer_index_at() names it (seam check, ENGINE.md)."""
+    fine = make_terrain(None, size_m=10000.0, pixel_m=10.0, slope_deg=12.0)
+    c = make_terrain(None, size_m=40000.0, pixel_m=40.0, slope_deg=2.0)
+    coarse = Terrain(c.surf, c.slp, x_min=c.x_min, y_max=c.y_max, pixel_m=40.0, name="coarse", role="near")
+    lt = LayeredTerrain([fine, coarse], blend_m=500.0)
+    cx, cy = CENTER_XY
+    # 400, 250, 100 and 10 m inside the fine tile's east edge (cx + 5000): still the fine slope, exactly
+    xs = cx + 5000.0 - np.array([400.0, 250.0, 100.0, 10.0])
+    assert np.all(lt.slope_at(xs, np.full(xs.size, cy)) == 12.0)
+    assert list(lt.slope_layer_index_at(xs, np.full(xs.size, cy))) == [0, 0, 0, 0]
+    # on the edge itself (beyond the last pixel center) and outside: the coarse slope, labelled coarse
+    xo = cx + 5000.0 + np.array([0.0, 10.0, 300.0])
+    assert np.all(lt.slope_at(xo, np.full(xo.size, cy)) == 2.0)
+    assert list(lt.slope_layer_index_at(xo, np.full(xo.size, cy))) == [1, 1, 1]
+    assert lt.slope_layer_index_at(cx + 30000.0, cy) == -1 and np.isnan(lt.slope_at(cx + 30000.0, cy))
+    assert float(lt.slope_at(cx, cy)) == 12.0                           # scalar query
+    # the heights still ramp (this is what rays need)
+    fine.surf[:] = 100.0
+    assert 40.0 < float(lt.height_at(cx + 4750.0, cy)) < 60.0
+
+
+@pytest.mark.skipif(not real_dem_available(), reason="real Site20v2 DEM not downloaded")
+def test_real_grid_slopes_come_from_one_dem_at_the_north_seam():
+    """Node slopes near y = 131 km: the 5 m raster up to the last 5 m pixel center, the 20 m raster from the edge on."""
+    from engine import analyze as az
+    az.reset_engine()
+    try:
+        eng = az._engine()
+        if not eng.layered or len(eng.grid.grids) < 2:
+            pytest.skip("regional DEM / grid not prepared")
+        g = eng.grid.grids[1]
+        fine, near = eng.terrain.layers[0], eng.terrain.layers[1]
+        ii = np.arange(g.nx)
+        for y, layer, flag in ((130600.0, fine, True), (130900.0, fine, True), (131000.0, near, False), (131100.0, near, False)):
+            jj = np.full(ii.size, int(round((y - g.y0) / g.spacing)))
+            x, yy = g.node_xy(jj, ii)
+            assert np.allclose(g.slope_deg[jj, ii], layer.slope_at(x, yy), atol=1e-4), y
+            assert np.all(eng.fine_layer(x, yy) == flag), y
+    finally:
+        az.reset_engine()

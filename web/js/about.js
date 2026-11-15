@@ -38,6 +38,7 @@ export function renderAbout(el, resp, meta) {
         <li><strong>Sun and Earth.</strong> Positions from JPL Horizons, converted to azimuth and elevation at each point.</li>
         <li><strong>Hourly simulation.</strong> Over the mission, each hour checks whether the Sun’s center and Earth’s center are above the local terrain horizon.</li>
         <li><strong>Classification.</strong> Each point is viable, risky (within the risk margin of a limit: darkness vs. battery, comms gap, slope or Earth time) or not viable (slope, darkness vs. battery, comms gap, Earth time, no Sun at touchdown). Survival probability = viable points ÷ all points.</li>
+        <li><strong>Best sites.</strong> Find the best landing areas for your mission across the whole region: the same rules are applied to the precomputed terrain grid every 200 m, giving an approximate map of the survival probability if you aim at each spot. The listed sites are then re-evaluated with the full analysis. They depend on the landing date and your mission settings.</li>
       </ol>
     </section>
 

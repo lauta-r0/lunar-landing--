@@ -87,7 +87,7 @@ def check_contract_shape(r: dict, req: dict):
                 "summary", "target_metrics", "points", "timeseries", "horizon_profile", "delay_curve",
                 "delay_tolerance_days", "recommendations", "map", "warnings", "sources"]:
         assert key in r, key
-    assert r["schema_version"] == "1.5" and isinstance(r["is_sample"], bool)
+    assert r["schema_version"] == "1.6" and isinstance(r["is_sample"], bool)
     assert r["computed_utc"].endswith("Z") and isinstance(r["compute_ms"], int)
     assert r["coverage"]["in_coverage"] is True and isinstance(r["coverage"]["dem_name"], str)
     for key in ["lat", "lon", "x_m", "y_m", "elevation_m", "slope_deg"]:

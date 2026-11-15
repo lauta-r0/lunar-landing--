@@ -1,7 +1,8 @@
 // Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team.
 
-// Canvas map: LOLA hillshade + km grid + 5 m data footprint + landing ellipse + classified points
-// + target. A click on empty terrain picks a new target (onPickTarget); a click on a point pins it.
+// Canvas map: LOLA hillshade + best-sites heatmap + km grid + 5 m data footprint + landing ellipse
+// + classified points + best-site pins + target. A click on empty terrain picks a new target
+// (onPickTarget); a click on a point pins it; a click on a best-site pin selects it (onPickSite).
 // World coordinates are south polar stereographic metres (x right, y up). One uniform
 // metres-per-pixel factor is used on both axes, so the terrain, the ellipse, the grid
 // and the scale bar always stay aligned.
@@ -11,6 +12,13 @@ const C = {
   risky: "#FF9F43",
   not_viable: "#FF6B6B",
 };
+
+// Best-sites heatmap: one hue (the "viable" green), transparent at 0% up to this opacity at 100%,
+// so the hillshade stays readable underneath. Invalid cells are fully transparent.
+const HEAT_RGB = [61, 220, 132];
+const HEAT_MAX_ALPHA = 0.5;
+const SITE_R = 11; // radius of a best-site pin, px
+const SITE_SEL_OFFSET = 24; // the selected pin sits this far up-right of the target crosshair, px
 
 const NICE_STEPS = [250, 500, 1000, 2000, 5000, 10000];
 const CLICK_SLOP_PX = 5; // a press that moves farther than this is a drag (pan), not a click
@@ -36,6 +44,13 @@ export class MapView {
     this.onPickTarget = null; // (x_m, y_m) => void
     this.hires = null; // {bounds, label, coarseLabel}
     this.pin = null; // [x_m, y_m] of the last picked spot, until its analysis arrives
+    this.heat = null; // {canvas, bounds} of the best-sites heatmap
+    this.heatOn = true;
+    this.sites = []; // best sites: [{rank, x_m, y_m, ...}]
+    this.selectedRank = null;
+    this.hoverRank = null;
+    this.onPickSite = null; // (site) => void
+    this.onSiteTip = null; // (site) => html
 
     this._bindEvents();
     new ResizeObserver(() => this._resize()).observe(frame);
@@ -59,6 +74,60 @@ export class MapView {
   /** Extent of the 5 m/px tile (schema 1.5 map.hires_bounds_xy_m) and the labels of the two levels. */
   setHires(bounds, label, coarseLabel) {
     this.hires = Array.isArray(bounds) && bounds.length === 4 ? { bounds, label, coarseLabel } : null;
+    this.draw();
+  }
+
+  /**
+   * Best-sites heatmap (POST /api/best-sites -> heatmap): base64 uint8, row 0 = north edge,
+   * 0..value_max = probability, invalid_value = no data. null clears it.
+   */
+  setHeatmap(heat) {
+    this.heat = null;
+    if (heat && heat.data_b64 && heat.width > 0 && heat.height > 0) {
+      const bin = atob(heat.data_b64);
+      if (bin.length === heat.width * heat.height) {
+        const cv = document.createElement("canvas");
+        cv.width = heat.width; cv.height = heat.height;
+        const c2 = cv.getContext("2d");
+        const im = c2.createImageData(heat.width, heat.height);
+        const max = heat.value_max || 254, invalid = heat.invalid_value ?? 255;
+        for (let i = 0; i < bin.length; i++) {
+          const v = bin.charCodeAt(i);
+          const o = i * 4;
+          im.data[o] = HEAT_RGB[0]; im.data[o + 1] = HEAT_RGB[1]; im.data[o + 2] = HEAT_RGB[2];
+          im.data[o + 3] = v === invalid ? 0 : Math.round((Math.min(v, max) / max) * HEAT_MAX_ALPHA * 255);
+        }
+        c2.putImageData(im, 0, 0);
+        this.heat = { canvas: cv, bounds: heat.bounds_xy_m };
+      }
+    }
+    this.draw();
+  }
+
+  setHeatmapVisible(on) { this.heatOn = !!on; this.draw(); }
+
+  /** Best-site pins; selectedRank marks the site that is the analysed target (filled pin). */
+  setSites(sites, selectedRank = null) {
+    this.sites = sites || [];
+    this.selectedRank = selectedRank;
+    this.hoverRank = null;
+    this.draw();
+  }
+
+  /** Show a whole area (map metres), e.g. the heatmap extent. */
+  fitBounds(b, padPx = 24) {
+    if (!b || !this.cw) return;
+    // keep the area clear of the corner overlays (sky panel, north arrow, scale bar, zoom buttons)
+    let top = padPx, bottom = padPx;
+    for (const r of this._overlayRects()) {
+      if (r.y0 < this.ch / 2) top = Math.max(top, r.y1 + 4);
+      else bottom = Math.max(bottom, this.ch - r.y0 + 4);
+    }
+    if (this.ch - top - bottom < this.ch * 0.5) { top = padPx; bottom = padPx; } // too little room: overlap instead
+    const w = Math.max(1, this.cw - 2 * padPx), h = Math.max(1, this.ch - top - bottom);
+    const mpp = Math.max((b[2] - b[0]) / w, (b[3] - b[1]) / h);
+    const centerPy = (top + this.ch - bottom) / 2;
+    this.view = { cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2 + (centerPy - this.ch / 2) * mpp, mpp };
     this.draw();
   }
 
@@ -107,7 +176,13 @@ export class MapView {
     if (!this.view) return;
     const [wx, wy] = this.toWorld(px, py);
     const homeMpp = Math.max(this.home.w / this.cw, this.home.h / this.ch);
-    const mpp = Math.min(homeMpp * 8, Math.max(homeMpp / 8, this.view.mpp / factor));
+    // zoom out far enough to see the whole heatmap when there is one
+    let maxMpp = homeMpp * 8;
+    if (this.heat) {
+      const b = this.heat.bounds;
+      maxMpp = Math.max(maxMpp, 1.15 * Math.max((b[2] - b[0]) / this.cw, (b[3] - b[1]) / this.ch));
+    }
+    const mpp = Math.min(maxMpp, Math.max(homeMpp / 8, this.view.mpp / factor));
     this.view.mpp = mpp;
     // keep the world point under the cursor fixed
     this.view.cx = wx - (px - this.cw / 2) * mpp;
@@ -181,6 +256,17 @@ export class MapView {
       ctx.fillRect(Math.max(0, x0), Math.max(0, y0), Math.min(cw, x1) - Math.max(0, x0), Math.min(ch, y1) - Math.max(0, y0));
     }
 
+    // 1b. best-sites heatmap, between the terrain and everything else
+    if (this.heat && this.heatOn) {
+      const b = this.heat.bounds;
+      const [x0, y0] = this.toPx(b[0], b[3]);
+      const [x1, y1] = this.toPx(b[2], b[1]);
+      // cells stay crisp when magnified (they are coarse samples, not a smooth field)
+      ctx.imageSmoothingEnabled = (x1 - x0) / this.heat.canvas.width < 3;
+      ctx.drawImage(this.heat.canvas, x0, y0, x1 - x0, y1 - y0);
+      ctx.imageSmoothingEnabled = true;
+    }
+
     // 2. km grid relative to the target
     this._drawGrid();
 
@@ -218,10 +304,29 @@ export class MapView {
       drawPin(ctx, qx, qy);
     }
 
+    // 4c. best-site pins (the selected one is drawn after the target, next to it)
+    for (const s of this.sites) {
+      if (s.rank === this.selectedRank) continue;
+      const [sx, sy] = this.toPx(s.x_m, s.y_m);
+      drawSitePin(ctx, sx, sy, s.rank, false, s.rank === this.hoverRank);
+    }
+
     // 5. target crosshair (no text label, so it never covers points)
     const t = this.data.target;
     const [tx, ty] = this.toPx(t.x_m, t.y_m);
     drawTarget(ctx, tx, ty);
+
+    // 5b. the selected best site is the target: its filled pin goes beside the crosshair
+    const sel = this.sites.find((s) => s.rank === this.selectedRank);
+    if (sel) {
+      const [sx, sy] = this.toPx(sel.x_m, sel.y_m);
+      ctx.beginPath();
+      ctx.moveTo(sx + 7, sy - 7);
+      ctx.lineTo(sx + SITE_SEL_OFFSET - 7, sy - SITE_SEL_OFFSET + 7);
+      ctx.lineWidth = 3.5; ctx.strokeStyle = "#000"; ctx.stroke();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = "#fff"; ctx.stroke();
+      drawSitePin(ctx, sx + SITE_SEL_OFFSET, sy - SITE_SEL_OFFSET, sel.rank, true, false);
+    }
 
     // 6. hover / pinned highlight
     const hid = this.pinnedId ?? this.hoverId;
@@ -358,6 +463,32 @@ export class MapView {
 
   /* ---------------- interaction ---------------- */
 
+  /** Best-site pin under the pointer (the selected one is drawn offset from the target). */
+  _pickSite(px, py) {
+    if (!this.view) return null;
+    let best = null, bestD = (SITE_R + 4) ** 2;
+    for (const s of this.sites) {
+      let [x, y] = this.toPx(s.x_m, s.y_m);
+      if (s.rank === this.selectedRank) { x += SITE_SEL_OFFSET; y -= SITE_SEL_OFFSET; }
+      const d = (x - px) ** 2 + (y - py) ** 2;
+      if (d < bestD) { bestD = d; best = s; }
+    }
+    return best;
+  }
+
+  _showSiteTip(s) {
+    if (!s || !this.onSiteTip) return this._hideTip();
+    this.tipEl.innerHTML = this.onSiteTip(s);
+    this.tipEl.classList.remove("is-pinned");
+    this.tipEl.hidden = false;
+    const [px, py] = this.toPx(s.x_m, s.y_m);
+    const tw = this.tipEl.offsetWidth, th = this.tipEl.offsetHeight;
+    let x = px + SITE_R + 10;
+    if (x + tw > this.cw - 8) x = px - tw - SITE_R - 10;
+    this.tipEl.style.left = `${Math.max(8, Math.min(this.cw - tw - 8, x))}px`;
+    this.tipEl.style.top = `${Math.max(8, Math.min(this.ch - th - 8, py - th / 2))}px`;
+  }
+
   _pick(px, py) {
     if (!this.points || !this.view) return null;
     const maxD = Math.max(9, (this._r || 5) * 1.8);
@@ -421,6 +552,15 @@ export class MapView {
         }
       }
       if (this.pinnedId != null || e.pointerType === "touch") return;
+      const site = this._pickSite(px, py);
+      const rank = site ? site.rank : null;
+      if (rank !== this.hoverRank) {
+        this.hoverRank = rank;
+        cv.style.cursor = site ? "pointer" : "";
+        if (site) { this.hoverId = null; this._showSiteTip(site); } else this._hideTip();
+        this.draw();
+      }
+      if (site) return;
       const p = this._pick(px, py);
       const id = p ? p.id : null;
       if (id !== this.hoverId) {
@@ -437,6 +577,14 @@ export class MapView {
       if (!this.view) return;
       const rect = cv.getBoundingClientRect();
       const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      const site = this.pinnedId == null ? this._pickSite(px, py) : null;
+      if (site) {
+        // a best-site pin wins over the sample points under it
+        this.hoverId = null; this.hoverRank = null; this._hideTip();
+        this.draw();
+        if (this.onPickSite) this.onPickSite(site);
+        return;
+      }
       const p = this._pick(px, py);
       if (p) {
         this.pinnedId = this.pinnedId === p.id ? null : p.id;
@@ -453,7 +601,9 @@ export class MapView {
       this.draw();
     });
     cv.addEventListener("pointerleave", () => {
-      if (this.pinnedId == null && this.hoverId != null) { this.hoverId = null; this._hideTip(); this.draw(); }
+      if (this.pinnedId == null && (this.hoverId != null || this.hoverRank != null)) {
+        this.hoverId = null; this.hoverRank = null; cv.style.cursor = ""; this._hideTip(); this.draw();
+      }
     });
     cv.addEventListener("wheel", (e) => {
       if (!this.view) return;
@@ -525,6 +675,27 @@ function drawPin(ctx, x, y) {
   ctx.fillStyle = "#fff"; ctx.fill();
   ctx.lineWidth = 1.5; ctx.strokeStyle = "#000"; ctx.stroke();
   ctx.beginPath(); ctx.arc(x, y - 17, 3, 0, Math.PI * 2); ctx.fillStyle = "#000"; ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Best-site pin: white outlined circle with the rank number (Barlow Semi Condensed), a thin black
+ * outline so it reads on the hillshade, never coloured. The selected site is a filled white circle.
+ */
+export function drawSitePin(ctx, x, y, rank, selected, hover) {
+  ctx.save();
+  const r = SITE_R + (hover ? 1.5 : 0);
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = selected ? "#fff" : "rgba(0,0,0,0.6)";
+  ctx.fill();
+  ctx.lineWidth = selected ? 3 : 4.5; ctx.strokeStyle = "#000"; ctx.stroke();
+  if (!selected) { ctx.lineWidth = hover ? 2.5 : 1.75; ctx.strokeStyle = "#fff"; ctx.stroke(); }
+  ctx.font = "700 14px 'Barlow Semi Condensed', 'Arial Narrow', Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = selected ? "#000" : "#fff";
+  ctx.fillText(String(rank), x, y + 1);
   ctx.restore();
 }
 

@@ -1,4 +1,12 @@
-# LunaScout — Shared Contract (v1.5)
+# LunaScout — Shared Contract (v1.6)
+
+> **Changes in v1.6 (2026-11-15, team decision: best sites)** — `schema_version` is now `"1.6"`. Additive only; no existing endpoint or field changes.
+> - New endpoint `POST /api/best-sites` (section 4.7): scans the whole analyzable area for the requested date and mission and returns an approximate heatmap of "survival probability if you aim here" plus the best aim points. Its request is the analyze request without `target`, plus `region` (`"all" | "5m" | "20m"`) and `max_sites`.
+> - Data resolution is judged on the whole ellipse, not on its center: `region` `"5m"` (the default) / `"20m"` keep an aim point only if at least 95% of its ellipse is on that data; `"all"` keeps every aim point. Sites are always ranked by their real survival probability, with no adjustment for the data resolution (ties: the larger share of the ellipse on 5 m data). Sites carry `fine_fraction` and `coarse_fraction`.
+> - Slopes are no longer blended across the 5 m / 20 m seam: every point takes the slope raster of one DEM, and `slope_dem_m` / `slope_coarse` name that DEM. This changes the slope of points within 500 m inside the tile edge (they were a 5 m / 20 m mix labelled 5 m); heights are still blended for the horizon. No field changes.
+> - New engine function `engine.best_sites.best_sites(request)` (section 5).
+> - `GET /api/health` and every response report `"1.6"`.
+>
 
 > **Changes in v1.5 (2026-11-15, owner decision: map UX)** — `schema_version` is now `"1.5"`. Additive only; no existing field changes.
 > - `GET /api/meta` → `map` and `POST /api/analyze` → `map` gain `hires_bounds_xy_m` (`[x_min, y_min, x_max, y_max]`, extent of the 5 m/px Site20v2 tile, same polar stereographic meters as the other bounds), `hires_label` (`"LOLA 5 m/px"`) and `coarse_label` (`"LOLA 20 m/px"`; `null` only when no coarser level is loaded). The frontend draws this footprint on the map and shows a data-resolution badge.
@@ -65,13 +73,13 @@ LunaScout is a single-screen web app for the lunar south pole. A lander never to
 Base path: `/api`. JSON only. CORS enabled for the frontend origin(s) and `http://localhost:*`.
 
 ### 4.1 `GET /api/health`
-`200 {"status":"ok","engine_ready":true,"schema_version":"1.5"}`
+`200 {"status":"ok","engine_ready":true,"schema_version":"1.6"}`
 
 ### 4.2 `GET /api/meta`
 Lets the frontend set defaults, limits and the map.
 ```json
 {
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "coverage": {
     "dem_name": "LOLA 5 m/px LDEM — Site20v2 (Mons Mouton / Leibnitz beta plateau) + LOLA 20 m/px polar LDEM (...) + LOLA 40 m/px polar LDEM (...)",
     "bounds_xy_m": [-0.0, -0.0, 0.0, 0.0],
@@ -132,7 +140,7 @@ Lets the frontend set defaults, limits and the map.
 **Response 200**
 ```json
 {
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "is_sample": false,
   "computed_utc": "2026-11-15T14:03:22Z",
   "compute_ms": 1840,
@@ -257,6 +265,68 @@ For each point, with mission window `[landing, landing + mission_days)` sampled 
 ### 4.6 Performance
 `POST /api/analyze` must answer in **< 3 s** for the default request on the deployed server (2 vCPU) with recommendations on, and in **< 1.5 s** without recommendations. Identical requests are cached.
 
+### 4.7 `POST /api/best-sites` (v1.6)
+Region-wide scan: where should the mission aim on this date with these settings? It runs in the threadpool like analyze; the engine runs one scan at a time. Identical requests are cached. Target: < 3 s on the deployed server for the default request.
+
+**Request** — the analyze request (4.3) without `target`; every field is optional (defaults of 4.2):
+```json
+{
+  "landing_utc": "2027-10-12T14:00:00Z",
+  "mission_days": 7,
+  "ellipse": {"semi_major_m": 1000, "semi_minor_m": 600, "azimuth_deg": 0},
+  "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8, "min_sun_margin_deg": 0},
+  "options": {"risk_margin": 0.2, "observer_height_m": 2.0},
+  "region": "5m",
+  "max_sites": 5
+}
+```
+- `region`: which aim points are considered, judged on the **whole ellipse** (not on its center). `"5m"` (default, the most reliable data): at least 95% of the ellipse on the LOLA 5 m/px tile. `"20m"`: at least 95% of the ellipse on the 20 m/px DEM outside the tile. `"all"`: every aim point in the analyzable area; it includes 20 m terrain, which can hide small craters and slopes (the UI must say so). The ranking is the same for every `region`: real survival probability only.
+- `max_sites`: 1–10, default 5.
+- `options.delay_days_max` and `options.include_recommendations` are accepted and ignored. A `target` is rejected (422).
+
+**Response 200**
+```json
+{
+  "schema_version": "1.6",
+  "is_sample": false,
+  "computed_utc": "2026-11-15T18:03:22Z",
+  "compute_ms": 440,
+  "inputs": { "...": "echo of the normalized request, including region and max_sites" },
+  "heatmap": {
+    "encoding": "uint8-base64",
+    "width": 121, "height": 211,
+    "cell_m": 200.0,
+    "bounds_xy_m": [60900.0, 105900.0, 85100.0, 148100.0],
+    "value_max": 254, "invalid_value": 255,
+    "approximate": true,
+    "data_b64": "…"
+  },
+  "summary": {"n_cells": 13921, "n_cells_above_zero": 6239, "best_heatmap_probability": 0.787,
+              "n_nodes": 15121, "n_nodes_simulated": 2987, "n_nodes_viable": 1522},
+  "sites": [
+    {"rank": 1, "name": "Site 1", "lat": -85.1436, "lon": 32.69785, "x_m": 0.0, "y_m": 0.0,
+     "survival_probability": 0.795, "survival_probability_incl_risky": 0.93, "n_points": 371,
+     "data_resolution_m": [5.0], "fine_fraction": 1.0, "coarse_fraction": 0.0,
+     "matches_full_analysis": true, "heatmap_probability": 0.787}
+  ],
+  "map": {"hillshade_url": "/api/static/hillshade.png", "hillshade_bounds_xy_m": [0.0, 0.0, 0.0, 0.0],
+          "hires_bounds_xy_m": [0.0, 0.0, 0.0, 0.0], "hires_label": "LOLA 5 m/px", "coarse_label": "LOLA 20 m/px"},
+  "warnings": ["Approximate heatmap: the precomputed horizon grid is sampled every 200 m; …"],
+  "sources": ["…"]
+}
+```
+Field rules:
+- `heatmap.data_b64`: base64 of `width * height` bytes, row-major, **row 0 = north edge** (`y_max`), column 0 = `x_min`. Byte `v` in 0–254 is the probability `v / 254`; `255` = invalid cell (outside the analyzable area, excluded by `region`, or less than 80% of the ellipse inside the area). `bounds_xy_m` are the outer edges of the cells, in the map coordinates of section 2. The whole response stays under 300 KB before gzip.
+- A cell's probability is the share of viable horizon-grid nodes (classified exactly as in 4.4, sampled every `cell_m`) inside the request's ellipse centered on that cell. **It is approximate** (`approximate` is always `true`): the UI must label it "Approximate (coarse sampling); click a site for the full analysis".
+- `sites`: up to `max_sites` aim points, at least 1.5 km (or 2 × semi-major, if larger) apart, sorted by `survival_probability` descending, `rank` from 1. Equal probabilities are ordered by the larger `fine_fraction`. The probability is real data only: nothing is added or subtracted for the data resolution. Only sites with `survival_probability` > 0.
+- `sites[].fine_fraction` / `coarse_fraction`: share of the ellipse area on the 5 m/px tile / on the 20 m/px DEM (they add up to 1). The UI labels a site by this composition ("5 M · 100%", "20 M · 100%", "MIXED · 40% 5 M"), not by its center. With `region` `"5m"` every site has `fine_fraction` ≥ 0.95; with `"20m"`, `coarse_fraction` ≥ 0.95.
+- **An empty list means no site meets the limits for this date**; the UI must say so and never show an empty list without an explanation.
+- `sites[].survival_probability`, `survival_probability_incl_risky` and `n_points` come from the same sampling as `POST /api/analyze` for that target, so with `matches_full_analysis: true` they equal the `summary` of the full analysis. `matches_full_analysis` is `false` for ellipses too small for the precomputed grid (analyze then computes horizons on the fly) or when `options.observer_height_m` differs from the grid's (2 m).
+- `sites[].data_resolution_m`: DEM pixel sizes behind the site's sample points (`[5.0]`, `[20.0]` or `[5.0, 20.0]`).
+- `sites[].heatmap_probability`: the coarse heatmap value at the site (it may differ slightly from `survival_probability`).
+- Results depend on the landing date and the mission settings; the UI must say so.
+- Errors: as 4.5 (`out_of_ephemeris_range`, `invalid_request`, 422), plus `400 {"error":"best_sites_unavailable","message":"…"}` when the precomputed horizon grid is not loaded.
+
 ## 5. Python engine interface (shared by 02, 03, 04)
 ```python
 # engine/ephemeris.py   (owner: 02)
@@ -272,10 +342,13 @@ def local_az_el(vecs: "np.ndarray", lat_deg: "np.ndarray", lon_deg: "np.ndarray"
 # engine/analyze.py     (owner: 03)
 def get_meta() -> dict: ...                   # body of GET /api/meta
 def analyze(request: dict) -> dict: ...       # body of POST /api/analyze (raises engine.errors.EngineError(code, message, extra))
+
+# engine/best_sites.py  (owner: 03, v1.6)
+def best_sites(request: dict) -> dict: ...    # body of POST /api/best-sites (raises engine.errors.EngineError)
 ```
 
 ## 6. Fixture
-`fixtures/sample_response.json` must always be a valid example of section 4.3 with `"is_sample": true`. The frontend uses it when the API is unreachable and shows a visible "Sample data — API offline" banner.
+`fixtures/sample_response.json` must always be a valid example of section 4.3 with `"is_sample": true`. The frontend uses it when the API is unreachable and shows a visible "Sample data — API offline" banner. There is no best-sites fixture (v1.6): when the API is unreachable the best-sites button shows "Unavailable offline" and results are never faked.
 
 ## 7. AI-use header (every code file)
 ```
