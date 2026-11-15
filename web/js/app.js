@@ -227,7 +227,7 @@ function setNotices(items) {
     const div = document.createElement("div");
     div.className = `notice notice--${n.kind || "info"}`;
     div.setAttribute("role", n.kind === "error" ? "alert" : "status");
-    div.innerHTML = `<div class="notice-body">${n.title ? `<strong>${esc(n.title)}</strong> · ` : ""}${esc(n.text)}</div>`;
+    div.innerHTML = `<div class="notice-body">${n.title ? `<strong>${esc(n.title)}</strong> · ` : ""}${esc(fixText(n.text))}</div>`;
     if (n.actions?.length) {
       const act = document.createElement("div");
       act.className = "notice-actions";
@@ -276,8 +276,13 @@ async function run({ fromUser = false } = {}) {
   }
 }
 
+function setStale(on) {
+  document.body.classList.toggle("is-stale", on && !!state.resp);
+}
+
 function handleRunError(err, req) {
   console.error("Analysis failed", err);
+  setStale(true);
   if (!(err instanceof ApiError)) {
     setNotices([{ kind: "error", title: "Error", text: String(err.message || err) }]);
     return;
@@ -343,6 +348,7 @@ async function showSample(extraNotice) {
 
 function render(resp) {
   state.resp = resp;
+  setStale(false);
   const isSample = !!resp.is_sample;
   const inputs = resp.inputs || {};
   const t = resp.target;
@@ -651,6 +657,7 @@ async function boot() {
   } catch (err) {
     console.warn("API unreachable, showing sample data", err);
     $("map-empty").textContent = "API offline";
+    $("sites-list").parentElement.hidden = true;
     fillForm(FALLBACK_DEFAULTS);
     await showSample();
     return;
