@@ -3,9 +3,11 @@
 
     uvicorn api.main:app --port 8000
 
-Endpoints: GET /api/health, GET /api/meta, POST /api/analyze, GET /api/static/hillshade.png.
+Endpoints: GET /api/health, GET /api/meta, POST /api/analyze, POST /api/best-sites,
+GET /api/static/hillshade.png.
 Responses over 1 KB are gzip-compressed when the client accepts it (GZipMiddleware).
-The engine is loaded once at startup (lifespan); analyses run in a threadpool; identical requests
+The engine is loaded once at startup (lifespan); analyses and best-sites scans run in a threadpool
+(the engine runs one scan at a time); identical requests
 are served from a thread-safe LRU cache (X-Cache: HIT|MISS, X-Compute-Ms).
 """
 from __future__ import annotations
@@ -18,6 +20,7 @@ import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from engine import analyze as engine_analyze
+from engine import best_sites as engine_best_sites
 from engine.analyze import INPUT_LIMITS as LIM
 from engine.errors import EngineError
 
@@ -98,6 +102,18 @@ class AnalyzeRequest(BaseModel):
     ellipse: Ellipse | None = None
     limits: Limits | None = None
     options: Options | None = None
+
+
+class BestSitesRequest(BaseModel):
+    """The analyze request without a target, plus the region filter (CONTRACT 4.7)."""
+    model_config = ConfigDict(extra="forbid")
+    landing_utc: str | None = None
+    mission_days: int | None = Field(None, **_rng("mission_days"))
+    ellipse: Ellipse | None = None
+    limits: Limits | None = None
+    options: Options | None = None          # only risk_margin and observer_height_m are used
+    region: Literal["all", "5m", "20m"] | None = None
+    max_sites: int | None = Field(None, ge=1, le=engine_best_sites.MAX_SITES_LIMIT)
 
 
 # =========================================================================== cache
@@ -205,6 +221,24 @@ async def analyze(body: AnalyzeRequest):
         result, cache_state = hit, "HIT"
     else:
         result = await run_in_threadpool(engine_analyze.analyze, request)
+        cache.put(key, result)
+        cache_state = "MISS"
+    ms = (time.perf_counter() - t0) * 1000.0
+    return JSONResponse(result, headers={"X-Cache": cache_state, "X-Compute-Ms": f"{ms:.0f}"})
+
+
+@app.post("/api/best-sites")
+async def best_sites(body: BestSitesRequest):
+    """Region-wide scan (CONTRACT 4.7): approximate heatmap + the best aim points, in the threadpool."""
+    request = body.model_dump(exclude_none=True)
+    key = "best-sites:" + json.dumps(engine_best_sites.normalize_request(request), sort_keys=True)
+    cache: LRUCache = app.state.cache
+    t0 = time.perf_counter()
+    hit = cache.get(key)
+    if hit is not None:
+        result, cache_state = hit, "HIT"
+    else:
+        result = await run_in_threadpool(engine_best_sites.best_sites, request)
         cache.put(key, result)
         cache_state = "MISS"
     ms = (time.perf_counter() - t0) * 1000.0

@@ -1,8 +1,9 @@
 // Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team.
 
-// LunaScout single-screen app: settings → /api/analyze → map, results, timeline.
+// LunaScout single-screen app: settings → /api/analyze → map, results, timeline;
+// "Find best sites" → /api/best-sites → heatmap, ranked pins and list (never from the fixture).
 
-import { getMeta, analyze, loadFixture, apiUrl, ApiError } from "./api.js";
+import { getMeta, analyze, bestSites, loadFixture, apiUrl, ApiError } from "./api.js";
 import { MapView } from "./map.js";
 import { SouthPolarStereo } from "./proj.js";
 import {
@@ -24,8 +25,15 @@ const FALLBACK_DEFAULTS = {
   options: { risk_margin: 0.2, delay_days_max: 30, include_recommendations: true, observer_height_m: 2.0 },
 };
 
-// IM-2 Athena quick picks reproduce the real event: touchdown 2025-03-06 17:31 UTC, 10-day planned mission.
-const ATHENA_TIMING = { landing_utc: "2025-03-06T17:31:00Z", mission_days: 10 };
+// Quick picks: named lunar locations (lat, east-positive lon). Each one uses the default date and duration.
+const QUICK_PICKS = [
+  { id: "mons_mouton", name: "Mons Mouton", lat: -84.6, lon: 31.0,
+    note: "IAU reference center" },
+  { id: "viper_area", name: "VIPER Mission Area", lat: -85.42088, lon: 31.6218,
+    note: "published center of the VIPER rover study area" },
+  { id: "nobile_rim_1", name: "Nobile Rim 1", lat: -85.431, lon: 37.241,
+    note: "published reference point in a region NASA evaluated for Artemis" },
+];
 
 const FIELDS = {
   lat: "f-lat", lon: "f-lon", date: "f-date", days: "f-days",
@@ -43,6 +51,8 @@ const state = {
   originTarget: null,
   timeline: null,
   proj: new SouthPolarStereo(null), // replaced by the CRS from /api/meta
+  // best sites: last response, the request it answers (key), and the request in flight
+  best: { resp: null, key: null, loading: false, pendingKey: null, ctrl: null, offline: false },
 };
 
 /* ================= markers (inline SVG, same shapes as the map) ================= */
@@ -168,7 +178,7 @@ function insideCoverageXY(x, y) {
 /* ================= pick a target on the map ================= */
 
 function pickTarget(x, y) {
-  if (state.running) return; // respect the "Analyzing…" lock
+  if (state.running || state.best.loading) return; // respect the "Analyzing…" / "Scanning…" lock
   const [lat, lon] = state.proj.toLatLon(x, y);
   $(FIELDS.lat).value = lat.toFixed(5);
   $(FIELDS.lon).value = lon.toFixed(5);
@@ -207,7 +217,8 @@ function fieldError(fieldKey, errId, msg) {
   if (el && !el.textContent) el.textContent = msg;
 }
 
-function validate(req) {
+/** needTarget = false skips the target checks (the best-sites scan has no target). */
+function validate(req, { needTarget = true } = {}) {
   clearErrors();
   const lim = state.meta?.input_limits || {};
   const errs = [];
@@ -216,9 +227,11 @@ function validate(req) {
     if (integer && !Number.isInteger(value)) { errs.push([key, errId, `${label} must be a whole number.`]); return; }
     if (range && (value < range[0] || value > range[1])) errs.push([key, errId, `${label} must be between ${range[0]} and ${range[1]}.`]);
   };
-  check("lat", "e-lat", req.target.lat, [-90, 90], "Latitude");
-  check("lon", "e-lon", req.target.lon, [-180, 180], "Longitude");
-  const out = errs.length ? null : outsideArea(req.target.lat, req.target.lon);
+  if (needTarget) {
+    check("lat", "e-lat", req.target.lat, [-90, 90], "Latitude");
+    check("lon", "e-lon", req.target.lon, [-180, 180], "Longitude");
+  }
+  const out = errs.length || !needTarget ? null : outsideArea(req.target.lat, req.target.lon);
   if (out) {
     const b = areaBounds();
     if (out.badLat) errs.push(["lat", "e-lat", `Must be between ${b.lat_min.toFixed(2)}° and ${b.lat_max.toFixed(2)}°.`]);
@@ -273,30 +286,26 @@ function updateDirty() {
   const dirty = state.lastRunKey !== null && !state.running && runKey(readForm()) !== state.lastRunKey;
   $("dirty-note").hidden = !dirty;
   markActiveChip();
+  updateBestStale();
 }
 
-/* ================= curated sites ================= */
+/* ================= quick picks ================= */
 
 function shortName(name) { return name.replace(/\s*\(.*\)\s*$/, ""); }
 
 function renderSites() {
   const list = $("sites-list");
-  const sites = state.meta?.curated_sites || [];
   list.innerHTML = "";
-  if (!sites.length) { list.parentElement.hidden = true; return; }
-  // IM-2 Athena entries first: they are the demo case.
-  const ordered = [...sites].sort((a, b) => (/athena/i.test(b.name) ? 1 : 0) - (/athena/i.test(a.name) ? 1 : 0));
-  for (const s of ordered) {
+  for (const s of QUICK_PICKS) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "chip" + (/athena/i.test(s.name) ? " chip--key" : "");
-    b.textContent = shortName(s.name);
+    b.className = "chip";
+    b.textContent = s.name;
     b.dataset.lat = s.lat;
     b.dataset.lon = s.lon;
     b.setAttribute("aria-pressed", "false");
-    const athena = /athena/i.test(s.name);
-    const timing = athena ? ATHENA_TIMING : { landing_utc: state.meta.defaults.landing_utc, mission_days: state.meta.defaults.mission_days };
-    b.dataset.tip = `${s.name} · ${fmtLat(s.lat)}, ${fmtLon(s.lon)} · landing ${fmtUtc(timing.landing_utc)}, ${timing.mission_days} days${athena ? " (the real IM-2 event)" : ""}. Select to analyze it.`;
+    const timing = { landing_utc: state.meta.defaults.landing_utc, mission_days: state.meta.defaults.mission_days };
+    b.dataset.tip = `${s.name} (${s.note}) · ${fmtLat(s.lat)}, ${fmtLon(s.lon)} · landing ${fmtUtc(timing.landing_utc)}, ${timing.mission_days} days. Select to analyze it.`;
     b.addEventListener("click", () => {
       $(FIELDS.lat).value = s.lat;
       $(FIELDS.lon).value = s.lon;
@@ -318,7 +327,7 @@ function markActiveChip() {
 }
 
 function siteNameFor(lat, lon) {
-  const s = (state.meta?.curated_sites || []).find((c) => Math.abs(c.lat - lat) < 1e-4 && Math.abs(c.lon - lon) < 1e-4);
+  const s = [...QUICK_PICKS, ...(state.meta?.curated_sites || [])].find((c) => Math.abs(c.lat - lat) < 1e-4 && Math.abs(c.lon - lon) < 1e-4);
   return s ? s.name : null;
 }
 
@@ -358,10 +367,11 @@ function setRunning(on) {
   $("run-label").textContent = on ? "Analyzing…" : "Run analysis";
   $("map-frame").classList.toggle("is-loading", on);
   updateDirty();
+  updateBestUi();
 }
 
 async function run({ fromUser = false } = {}) {
-  if (state.running) return;
+  if (state.running || state.best.loading) return; // analyze and best-sites never run together
   const req = readForm();
   if (!validate(req)) return;
   if (fromUser || !state.originTarget) state.originTarget = { ...req.target };
@@ -369,6 +379,7 @@ async function run({ fromUser = false } = {}) {
   try {
     const resp = await analyze(req);
     state.live = true;
+    state.best.offline = false;
     state.lastRunKey = runKey(req);
     state.lastReq = req;
     setNotices([]);
@@ -394,6 +405,7 @@ function handleRunError(err, req) {
     return;
   }
   const body = err.body || {};
+  if (err.status === 0) state.best.offline = true; // API unreachable: best sites are unavailable too
   if (err.status === 400 && body.error === "out_of_coverage") {
     const st = body.suggested_target;
     setNotices([{
@@ -441,6 +453,7 @@ function handleRunError(err, req) {
 async function showSample(extraNotice) {
   try {
     const data = await loadFixture();
+    clearBest(); // best sites are never shown next to sample data
     state.lastRunKey = null;
     state.lastReq = null;
     fillForm(data.inputs);
@@ -468,7 +481,9 @@ function render(resp) {
     : `<span class="status-dot" aria-hidden="true"></span>Live · last run ${hhmmUtc()}`;
 
   // ---- map header ----
-  const name = siteNameFor(inputs.target?.lat ?? t.lat, inputs.target?.lon ?? t.lon) || "Custom target";
+  const bestRank = isSample ? null : selectedSiteRank();
+  const name = siteNameFor(inputs.target?.lat ?? t.lat, inputs.target?.lon ?? t.lon)
+    || (bestRank ? `Best site ${bestRank}` : "Custom target");
   $("site-name").textContent = shortName(name);
   $("site-name").title = name;
   const e = inputs.ellipse || {};
@@ -531,6 +546,8 @@ function render(resp) {
 
   renderAbout($("about-body"), resp, state.meta);
   markActiveChip();
+  if (isSample) clearBest();
+  else syncBestSelection();
 }
 
 /**
@@ -720,6 +737,256 @@ function renderRecs(resp) {
   }
 }
 
+/* ================= best sites ================= */
+
+const NO_SITE_TEXT = "No site meets your limits for this date. Try relaxing the limits or another date.";
+
+const bestRegion = () => document.querySelector("#best-region input:checked")?.value || "all";
+
+/** Request of POST /api/best-sites: the mission settings without the target, plus the region filter. */
+function bestPayload(req) {
+  return {
+    landing_utc: req.landing_utc,
+    mission_days: req.mission_days,
+    ellipse: req.ellipse,
+    limits: req.limits,
+    options: { risk_margin: req.options.risk_margin, observer_height_m: req.options.observer_height_m },
+    region: bestRegion(),
+    max_sites: 5,
+  };
+}
+
+function updateBestUi() {
+  const b = state.best;
+  const offline = !state.live || b.offline;
+  const btn = $("best-btn");
+  btn.disabled = offline || state.running; // never while an analysis runs
+  btn.setAttribute("aria-busy", b.loading ? "true" : "false");
+  $("best-label").textContent = offline ? "Unavailable offline" : b.loading ? "Scanning region…" : "Find best sites";
+  document.querySelectorAll("#best-region input").forEach((i) => { i.disabled = offline; });
+  $("run-btn").disabled = b.loading; // and no analysis while a scan runs
+  $("best-list").setAttribute("aria-busy", b.loading ? "true" : "false");
+  document.querySelectorAll("#best-list .rec").forEach((r) => { r.disabled = b.loading || state.running; });
+}
+
+/** The list is stale when the settings (or the region) differ from the request it answers. */
+function updateBestStale() {
+  const b = state.best;
+  const stale = !!b.resp && !b.loading && JSON.stringify(bestPayload(readForm())) !== b.key;
+  $("best-stale").hidden = !stale;
+  $("best-list").classList.toggle("is-stale", stale);
+}
+
+function clearBest() {
+  const b = state.best;
+  if (b.ctrl) b.ctrl.abort();
+  b.ctrl = null; b.loading = false; b.pendingKey = null; b.resp = null; b.key = null;
+  map.setHeatmap(null);
+  map.setSites([]);
+  $("heat-legend").hidden = true;
+  $("best-section").hidden = true;
+  $("best-list").innerHTML = "";
+  $("best-notes").innerHTML = "";
+  updateBestUi();
+  updateBestStale();
+}
+
+function bestMessage(title, text, role = "status") {
+  const box = $("best-list");
+  box.innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "rec-empty";
+  div.setAttribute("role", role);
+  div.innerHTML = `<div class="label-strong">${esc(title)}</div><div class="caption">${esc(text)}</div>`;
+  box.appendChild(div);
+  $("best-section").hidden = false;
+}
+
+async function findBestSites() {
+  const b = state.best;
+  if (state.running || !state.live || b.offline) return;
+  const req = readForm();
+  if (!validate(req, { needTarget: false })) return;
+  const payload = bestPayload(req);
+  const key = JSON.stringify(payload);
+  if (b.loading && b.pendingKey === key) return; // this exact request is already in flight
+  if (b.ctrl) b.ctrl.abort(); // a new request cancels the one in flight
+  const ctrl = new AbortController();
+  b.ctrl = ctrl; b.loading = true; b.pendingKey = key;
+  if (!b.resp) bestMessage("Scanning the region…", "Evaluating every part of the region for your date and mission settings.");
+  $("best-notes").innerHTML = b.resp ? $("best-notes").innerHTML : "";
+  updateBestUi();
+  updateBestStale();
+  try {
+    const resp = await bestSites(payload, ctrl.signal);
+    if (b.ctrl !== ctrl) return; // superseded while the response was being read
+    b.resp = resp; b.key = key; b.offline = false;
+    showBest(resp);
+  } catch (err) {
+    if (err.code === "aborted" || b.ctrl !== ctrl) return;
+    handleBestError(err);
+  } finally {
+    if (b.ctrl === ctrl) {
+      b.ctrl = null; b.loading = false; b.pendingKey = null;
+      updateBestUi();
+      updateBestStale();
+    }
+  }
+}
+
+function handleBestError(err) {
+  console.error("Best sites failed", err);
+  const b = state.best;
+  const body = (err instanceof ApiError && err.body) || {};
+  b.resp = null; b.key = null;
+  map.setHeatmap(null);
+  map.setSites([]);
+  $("heat-legend").hidden = true;
+  $("best-notes").innerHTML = "";
+  if (!(err instanceof ApiError)) {
+    bestMessage("Best sites failed", String(err.message || err), "alert");
+  } else if (err.status === 0) {
+    // API down: say so on the button. Best sites are never faked from the sample fixture.
+    b.offline = true;
+    bestMessage("Unavailable offline", "The API is unreachable, so best sites cannot be computed. Sample data is never used for this.", "alert");
+  } else if (err.status === 404 || err.status === 405) {
+    bestMessage("Not available", "This API version does not include the best-sites search yet.", "alert");
+  } else if (err.status === 400 && body.error === "out_of_ephemeris_range") {
+    fieldError("date", "e-date", "Outside the ephemeris range.");
+    bestMessage("Date out of range", fixText(body.message) || "The landing date is outside the precomputed ephemeris.", "alert");
+  } else if (err.status === 422) {
+    bestMessage("Check the settings", "Some values were rejected by the API.", "alert");
+  } else {
+    bestMessage("Best sites failed", `The API returned an error (${err.status}${body.message ? `: ${fixText(body.message)}` : ""}).`, "alert");
+  }
+}
+
+function siteProbText(s) {
+  const pct = s.survival_probability * 100;
+  if (pct > 0 && pct < 1) return "<1%";
+  const r = Math.round(pct);
+  return `${r === 100 && s.survival_probability < 1 ? 99 : r}%`;
+}
+
+/** Pixel size (m) in a level label such as "LOLA 5 m/px". */
+function labelPx(label, fallback) {
+  const m = /([\d.]+)\s*m\/px/i.exec(label || "");
+  return m ? `${+m[1]}` : fallback;
+}
+
+/**
+ * Data resolution of a best site by the composition of its whole ellipse (sites[].fine_fraction),
+ * not by its center: "5 M · 100%", "20 M · 100%" or "MIXED · 40% 5 M".
+ */
+function siteRes(s) {
+  const mapInfo = state.best.resp?.map || state.meta?.map || {};
+  const fine = labelPx(mapInfo.hires_label, "5"), coarse = labelPx(mapInfo.coarse_label, "20");
+  const f = s.fine_fraction ?? (s.coarse_fraction != null ? 1 - s.coarse_fraction : null);
+  if (f == null) return null;
+  const pct = Math.round(f * 100);
+  if (pct >= 100) return { text: `${fine} M · 100%`, spoken: `whole ellipse on ${fine} metre data` };
+  if (pct <= 0) return { text: `${coarse} M · 100%`, spoken: `whole ellipse on ${coarse} metre data` };
+  return { text: `MIXED · ${pct}% ${fine} M`, spoken: `mixed data, ${pct} percent of the ellipse on ${fine} metre data` };
+}
+
+/** Great-circle distance on the Moon (R = 1737.4 km), km. */
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const rad = Math.PI / 180;
+  const a = Math.sin(((lat2 - lat1) * rad) / 2) ** 2 +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(((lon2 - lon1) * rad) / 2) ** 2;
+  return 2 * 1737.4 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** Rank of the best site that is the analysed target, or null. */
+function selectedSiteRank() {
+  const t = state.resp && !state.resp.is_sample ? state.resp.inputs?.target || state.resp.target : null;
+  const sites = state.best.resp?.sites || [];
+  if (!t) return null;
+  const s = sites.find((q) => Math.abs(q.lat - t.lat) < 2e-5 && Math.abs(q.lon - t.lon) < 2e-5);
+  return s ? s.rank : null;
+}
+
+function syncBestSelection() {
+  const resp = state.best.resp;
+  if (!resp) return;
+  map.setSites(resp.sites || [], selectedSiteRank());
+  renderBestList(resp);
+}
+
+function showBest(resp) {
+  $("best-section").hidden = false;
+  $("heat-legend").hidden = false;
+  $("heat-toggle").setAttribute("aria-pressed", "true");
+  map.setHeatmapVisible(true);
+  map.setHeatmap(resp.heatmap);
+  syncBestSelection();
+  map.fitBounds(resp.heatmap?.bounds_xy_m); // show the whole region; the reset button returns to the ellipse
+  if (window.matchMedia("(max-width: 820px)").matches) {
+    $("map-frame").scrollIntoView({ behavior: "smooth", block: "start" }); // map + heatmap toggle in view
+  }
+}
+
+function renderBestList(resp) {
+  const box = $("best-list");
+  const sites = resp.sites || [];
+  const notes = (resp.warnings || []).map(fixText);
+  $("best-notes").innerHTML = notes.map((w) => `<li>${esc(w)}</li>`).join("");
+  if (!sites.length) {
+    // never an empty list without an explanation
+    bestMessage("No site found", NO_SITE_TEXT);
+    return;
+  }
+  box.innerHTML = "";
+  const selected = selectedSiteRank();
+  const t = state.resp && !state.resp.is_sample ? state.resp.target : null;
+  const locked = state.best.loading || state.running;
+  for (const s of sites) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "rec";
+    b.disabled = locked;
+    if (s.rank === selected) b.setAttribute("aria-current", "true");
+    const prob = siteProbText(s);
+    const res = siteRes(s);
+    const dist = t ? distanceKm(t.lat, t.lon, s.lat, s.lon) : null;
+    const meta = [
+      `${fmtLat(s.lat)} · ${fmtLon(s.lon)}`,
+      s.rank === selected ? "current target" : dist != null ? `${dist.toFixed(1)} km from target` : "",
+      s.matches_full_analysis ? "" : "approximate",
+    ].filter(Boolean).join(" · ");
+    b.setAttribute("aria-label", `${s.rank === selected ? "Current target, site" : "Analyze site"} ${s.rank}: ${prob.replace("<", "under ")} survival probability${res ? `, ${res.spoken}` : ""}${dist != null && s.rank !== selected ? `, ${dist.toFixed(1)} km from the target` : ""}`);
+    b.innerHTML = `
+      <span class="rec-prob">${esc(prob)}</span>
+      <span class="rec-body">
+        <span class="rec-name best-name"><span class="rank-dot" aria-hidden="true">${s.rank}</span><span>${esc(fixText(s.name || `Site ${s.rank}`))}</span>${res ? `<span class="res-badge num">${esc(res.text)}</span>` : ""}</span>
+        <span class="rec-meta">${esc(meta)}</span>
+      </span>${ICON.arrow}`;
+    b.addEventListener("click", () => selectSite(s));
+    box.appendChild(b);
+  }
+}
+
+/** A site (list row or map pin) runs the full analysis there with the current settings. */
+function selectSite(s) {
+  if (state.running || state.best.loading) return;
+  $(FIELDS.lat).value = s.lat;
+  $(FIELDS.lon).value = s.lon;
+  run({ fromUser: true });
+}
+
+function siteTip(s) {
+  const res = siteRes(s);
+  return `
+    <div class="tip-head"><span class="rank-dot" aria-hidden="true">${s.rank}</span>${esc(fixText(s.name || `Site ${s.rank}`))} · ${esc(siteProbText(s))}</div>
+    <div class="tip-grid">
+      <span>Survival probability</span><span>${esc(siteProbText(s))}</span>
+      <span>Including risky points</span><span>${Math.round(s.survival_probability_incl_risky * 100)}%</span>
+      ${res ? `<span>Data under the ellipse</span><span>${esc(res.text)}</span>` : ""}
+    </div>
+    <div class="tip-note">${fmtLat(s.lat)} · ${fmtLon(s.lon)}</div>
+    <div class="tip-note">Click for the full analysis. Best sites depend on the date and mission settings.</div>`;
+}
+
 /* ================= point tooltip ================= */
 
 function pointTip(p) {
@@ -779,6 +1046,8 @@ const map = new MapView({
 });
 map.onViewChange = syncScale;
 map.onPickTarget = pickTarget;
+map.onPickSite = selectSite;
+map.onSiteTip = siteTip;
 
 async function boot() {
   initTooltips($("tooltip"));
@@ -791,6 +1060,15 @@ async function boot() {
   $("settings").addEventListener("submit", (e) => { e.preventDefault(); run({ fromUser: true }); });
   $("settings").addEventListener("input", updateDirty);
   $("settings").addEventListener("change", updateDirty);
+  $("best-btn").addEventListener("click", findBestSites);
+  // a new region re-runs the search (cancelling the one in flight) once there is something to update
+  $("best-region").addEventListener("change", () => { if (state.best.resp || state.best.loading) findBestSites(); });
+  $("heat-toggle").addEventListener("click", () => {
+    const on = $("heat-toggle").getAttribute("aria-pressed") !== "true";
+    $("heat-toggle").setAttribute("aria-pressed", on ? "true" : "false");
+    map.setHeatmapVisible(on);
+  });
+  updateBestUi(); // "Unavailable offline" until /api/meta answers
   renderAbout($("about-body"), null, null);
 
   try {
@@ -804,6 +1082,7 @@ async function boot() {
     state.meta = await getMeta();
     state.live = true;
     state.proj = new SouthPolarStereo(state.meta.map?.crs_proj4);
+    updateBestUi();
   } catch (err) {
     console.warn("API unreachable, showing sample data", err);
     $("map-empty").textContent = "API offline";

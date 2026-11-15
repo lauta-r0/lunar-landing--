@@ -12,7 +12,17 @@ Built for the NASA Space Apps Challenge 2026, challenge *Lunar Landing Site Navi
 - **Demo:** [DEMO LINK]
 - **Planning aid, not an operational tool.**
 
-![LunaScout main screen, live run of the Sunlit slope quick pick (2027-10-12): landing ellipse with viable/risky/not-viable points, survival probability 17.7 %, timeline and recommended nearby targets](docs/ui-desktop.png)
+## Features
+
+- **Survival probability over the whole landing ellipse**, with viable / risky / not viable points on a real LOLA map.
+- **Mission timeline** of Sun and Earth elevation against the terrain horizon, and **launch-delay tolerance**.
+- **Recommended nearby targets** with a higher survival probability (one click re-runs the analysis there).
+- **Find best sites:** scans the whole analyzable region for your date and mission and returns an approximate heatmap of "survival probability if you aim here" plus the five best ranked aim points; click one for the full analysis (`POST /api/best-sites`, see [engine/ENGINE.md](engine/ENGINE.md), "Best sites").
+- **Quick picks** for three named places: Mons Mouton (IAU reference centre, −84.60000, 31.00000), VIPER Mission Area (−85.42088, 31.62180) and Nobile Rim 1 (−85.43100, 37.24100). Any other target, such as the IM-2 "Athena" site, is entered by hand.
+
+![LunaScout main screen, live run of the Sunlit slope target −85.48962, 30.66935 (2027-10-12): landing ellipse with viable/risky/not-viable points, survival probability 17.7 %, timeline and recommended nearby targets](docs/ui-desktop.png)
+
+![Find best sites: approximate heatmap of the survival probability if you aim at each spot, with the five best aim points ranked on the map and in the results panel](docs/ui-best-sites.png)
 
 ## Why the whole ellipse
 
@@ -31,14 +41,14 @@ flowchart LR
       E --> F[5 Classification<br/>viable / risky / not viable]
     end
     F --> G[Survival probability,<br/>delay tolerance, better targets,<br/>timeline]
-    G --> H[FastAPI /api/analyze] --> I[Web UI: map, results, timeline]
+    G --> H[FastAPI /api/analyze<br/>and /api/best-sites] --> I[Web UI: map, results,<br/>timeline, best-sites heatmap]
 ```
 
 1. **Terrain.** Real LOLA topography around the target: 5 m/px near Mons Mouton, 20 m and 40 m/px south-polar DEMs farther out.
 2. **Horizon mask.** For each sample point, the terrain horizon elevation in every direction (1° bins), by ray marching along great circles with the Moon's curvature, out to about 100 km. Horizons are precomputed on a grid (50 m on the 5 m tile, 100 m north of it) and computed on the fly for small ellipses and for the target.
 3. **Sun and Earth.** Positions from JPL Horizons, queried once (hourly, 2025–2028) and stored as unit vectors in the Moon Mean-Earth/polar-axis frame; azimuth and elevation at each point are computed geometrically. The app never calls Horizons live.
 4. **Hourly simulation.** Each hour, is the centre of the Sun / of the Earth above that point's terrain horizon? Observer height 2 m, no refraction.
-5. **Classification.** *Not viable* if a limit is broken (slope, darkness longer than the battery, comms gap, too little Earth time, no Sun at touchdown); *risky* if within the risk margin of a limit; *viable* otherwise. Survival probability = viable points ÷ all points, **assuming the landing is uniformly distributed inside the ellipse**. The analysis is repeated for each launch delay and for nearby curated sites and offsets. Exact rules: [CONTRACT.md](CONTRACT.md) §4.4.
+5. **Classification.** *Not viable* if a limit is broken (slope, darkness longer than the battery, comms gap, too little Earth time, no Sun at touchdown); *risky* if within the risk margin of a limit; *viable* otherwise. Survival probability = viable points ÷ all points, **assuming the landing is uniformly distributed inside the ellipse**. The analysis is repeated for each launch delay and for nearby curated sites and offsets. **Find best sites** applies the same rules to a coarse grid of aim points across the whole region (approximate; the full analysis of a chosen site is exact). Exact rules: [CONTRACT.md](CONTRACT.md) §4.4.
 
 More detail: [engine/ENGINE.md](engine/ENGINE.md), [engine/EPHEMERIS.md](engine/EPHEMERIS.md).
 
