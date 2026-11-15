@@ -116,7 +116,48 @@ function readForm() {
 
 const runKey = (req) => JSON.stringify(req);
 
+/* ================= analyzable area ================= */
+
+const AREA_NAME = "Mons Mouton region";
+
+function areaBounds() {
+  return state.meta?.coverage?.approx_bounds_latlon || null;
+}
+
+function renderAreaHint() {
+  const b = areaBounds();
+  const el = $("area-hint");
+  if (!b) { el.hidden = true; return; }
+  el.hidden = false;
+  el.textContent = `Analyzable area: lat ${b.lat_min.toFixed(2)}° to ${b.lat_max.toFixed(2)}°, lon ${b.lon_min.toFixed(2)}–${b.lon_max.toFixed(2)}° E (${AREA_NAME})`;
+}
+
+/** Which coordinates fall outside the approximate lat/lon box of the terrain data. */
+function outsideArea(lat, lon) {
+  const b = areaBounds();
+  if (!b || !isFinite(lat) || !isFinite(lon)) return null;
+  const badLat = lat < b.lat_min || lat > b.lat_max;
+  const badLon = lon < b.lon_min || lon > b.lon_max;
+  return badLat || badLon ? { badLat, badLon } : null;
+}
+
+function showAreaError(on) {
+  $("area-error").hidden = !on;
+  if (on) {
+    $("area-error-text").textContent = `This target is outside the terrain data. Pick a point inside the ${AREA_NAME}, or start from its center.`;
+  }
+}
+
+function goToRegionCenter() {
+  const c = state.meta?.coverage;
+  if (!c) return;
+  $(FIELDS.lat).value = c.center_lat;
+  $(FIELDS.lon).value = c.center_lon;
+  run({ fromUser: true });
+}
+
 function clearErrors() {
+  showAreaError(false);
   document.querySelectorAll(".field-error").forEach((e) => { e.textContent = ""; });
   document.querySelectorAll(".input[aria-invalid]").forEach((e) => e.removeAttribute("aria-invalid"));
 }
@@ -142,6 +183,12 @@ function validate(req) {
   };
   check("lat", "e-lat", req.target.lat, [-90, 90], "Latitude");
   check("lon", "e-lon", req.target.lon, [-180, 180], "Longitude");
+  const out = errs.length ? null : outsideArea(req.target.lat, req.target.lon);
+  if (out) {
+    const b = areaBounds();
+    if (out.badLat) errs.push(["lat", "e-lat", `Must be between ${b.lat_min.toFixed(2)}° and ${b.lat_max.toFixed(2)}°.`]);
+    if (out.badLon) errs.push(["lon", "e-lon", `Must be between ${b.lon_min.toFixed(2)}° and ${b.lon_max.toFixed(2)}° E.`]);
+  }
   if (!req.landing_utc) errs.push(["date", "e-date", "Use YYYY-MM-DD HH:MM (UTC), e.g. 2027-10-12 14:00."]);
   else if (state.meta?.ephemeris_range_utc) {
     const [a, b] = state.meta.ephemeris_range_utc.map(Date.parse);
@@ -165,6 +212,7 @@ function validate(req) {
   check("height", "e-height", req.options.observer_height_m, [0, 20], "Observer height");
 
   for (const [key, errId, msg] of errs) fieldError(key, errId, msg);
+  showAreaError(!!out);
   if (errs.length) {
     const first = $(FIELDS[errs[0][0]]);
     if (["margin", "risk", "delay", "height"].includes(errs[0][0])) $("advanced").open = true;
@@ -663,6 +711,7 @@ async function boot() {
   initTooltips($("tooltip"));
   $("about-btn").addEventListener("click", () => $("about").showModal());
   $("about").addEventListener("click", (e) => { if (e.target === $("about")) $("about").close(); });
+  $("area-center-btn").addEventListener("click", goToRegionCenter);
   $("zoom-in").addEventListener("click", () => map.zoom(1.25));
   $("zoom-out").addEventListener("click", () => map.zoom(1 / 1.25));
   $("zoom-reset").addEventListener("click", () => map.resetView());
@@ -691,6 +740,7 @@ async function boot() {
   }
 
   applyInputLimits();
+  renderAreaHint();
   renderSites();
   const saved = loadInputs();
   const defaults = { target: { lat: state.meta.curated_sites?.find((s) => s.id === "summit_plateau")?.lat ?? FALLBACK_DEFAULTS.target.lat, lon: state.meta.curated_sites?.find((s) => s.id === "summit_plateau")?.lon ?? FALLBACK_DEFAULTS.target.lon }, ...state.meta.defaults };
