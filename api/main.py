@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse as StarletteJSONResponse
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,6 +34,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 HILLSHADE_FILE = REPO_ROOT / "data" / "derived" / "hillshade.png"
 SCHEMA_VERSION = engine_analyze.SCHEMA_VERSION
 CACHE_SIZE = int(os.environ.get("LUNASCOUT_API_CACHE", "256"))
+
+
+# =========================================================================== responses
+class JSONResponse(StarletteJSONResponse):
+    """JSON with an explicit charset and ASCII-only bytes (non-ASCII characters as unicode escapes).
+
+    Starlette's default sends `application/json` with raw UTF-8 and no charset; clients that guess the
+    encoding (Windows PowerShell 5.1 and some HTTP libraries use ISO-8859-1) then show "â€”" for "—".
+    With the charset declared and the bytes pure ASCII, every client decodes the same text.
+    """
+    media_type = "application/json; charset=utf-8"
+
+    def render(self, content) -> bytes:
+        return json.dumps(content, ensure_ascii=True, allow_nan=False, indent=None,
+                          separators=(",", ":")).encode("ascii")
 
 
 # =========================================================================== request model (CONTRACT 4.3)
@@ -129,7 +144,8 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="LunaScout API", version=SCHEMA_VERSION, lifespan=lifespan)
+app = FastAPI(title="LunaScout API", version=SCHEMA_VERSION, lifespan=lifespan,
+              default_response_class=JSONResponse)
 
 _origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(

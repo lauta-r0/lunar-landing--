@@ -248,7 +248,7 @@ the ray spacing on a 30 degree slope is about 0.17 degrees; from the nearest-pix
    sites, each evaluated on a coarser sample (up to 60 grid nodes); the best 3 that beat the current
    probability are returned.
    "Ellipse area over max slope" samples the finest slope raster on a 5 m lattice inside the ellipse.
-9. Identical requests are served from a 32-entry cache.
+9. Identical requests are served from a 32-entry cache. Recommendations are truly nearby: rings at 1, 2 and 3 km (8 bearings each) plus curated sites within 5 km of the target (`REC_MAX_CURATED_KM`).
 
 ### Sun clearance (`min_sun_margin`, `low_sun_margin`, CONTRACT v1.3)
 

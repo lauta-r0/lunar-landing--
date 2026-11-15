@@ -46,6 +46,7 @@ FLY_POINTS = 70              # target number of on-the-fly points
 # threads for on-the-fly horizons (LUNASCOUT_THREADS overrides; Cloud Run with 2 vCPU -> 2)
 FLY_THREADS = int(os.environ.get("LUNASCOUT_THREADS") or min(4, os.cpu_count() or 1))
 REC_MAX_POINTS = 60          # points per recommendation candidate
+REC_MAX_CURATED_KM = 5.0     # curated sites farther than this are not "nearby" recommendations
 SUN_HOURS_MIN_FRACTION = 0.6
 AREA_OVER_SLOPE_MAX_PCT = 20.0
 HILLSHADE_URL = "/api/static/hillshade.png"
@@ -789,7 +790,7 @@ def _recommend(eng: _Engine, req: dict, frame: _Frame, p_current: float, sun_vec
             cands.append((f"{dist_km:.1f} km {name} of target", float(clat), float(clon), dist_km))
     for s in _curated_sites(eng):
         d_km = float(geo.great_circle_distance(lat0, lon0, s["lat"], s["lon"])) / 1000.0
-        if d_km > 0.2:
+        if 0.2 < d_km <= REC_MAX_CURATED_KM:
             cands.append((s["name"], s["lat"], s["lon"], d_km))
 
     # small ellipses: sample at least a 100 m neighborhood so every candidate has grid nodes
