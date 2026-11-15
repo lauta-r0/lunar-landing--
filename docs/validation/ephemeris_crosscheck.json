@@ -1,0 +1,229 @@
+{
+ "hours": [
+  "2025-11-22T06:00:00+00:00",
+  "2027-05-23T09:00:00+00:00",
+  "2028-10-04T04:00:00+00:00"
+ ],
+ "results": [
+  {
+   "site": "dem_center",
+   "utc": "2025-11-22T06:00Z",
+   "body": "sun",
+   "horizons_az": 124.195516141,
+   "horizons_el": -1.057799986,
+   "lunascout_az": 124.196,
+   "lunascout_el": -1.058,
+   "d_az": 0.00048,
+   "d_el": 0.0002
+  },
+  {
+   "site": "dem_center",
+   "utc": "2025-11-22T06:00Z",
+   "body": "earth",
+   "horizons_az": 325.875390625,
+   "horizons_el": -2.99968224,
+   "lunascout_az": 325.875,
+   "lunascout_el": -3.0,
+   "d_az": 0.00039,
+   "d_el": 0.00032
+  },
+  {
+   "site": "dem_center",
+   "utc": "2027-05-23T09:00Z",
+   "body": "sun",
+   "horizons_az": 297.037686964,
+   "horizons_el": 0.571631822,
+   "lunascout_az": 297.038,
+   "lunascout_el": 0.572,
+   "d_az": 0.00031,
+   "d_el": 0.00037
+  },
+  {
+   "site": "dem_center",
+   "utc": "2027-05-23T09:00Z",
+   "body": "earth",
+   "horizons_az": 330.223862866,
+   "horizons_el": -0.458751136,
+   "lunascout_az": 330.223,
+   "lunascout_el": -0.459,
+   "d_az": 0.00086,
+   "d_el": 0.00025
+  },
+  {
+   "site": "dem_center",
+   "utc": "2028-10-04T04:00Z",
+   "body": "sun",
+   "horizons_az": 320.779393306,
+   "horizons_el": 5.1237088,
+   "lunascout_az": 320.779,
+   "lunascout_el": 5.124,
+   "d_az": 0.00039,
+   "d_el": 0.00029
+  },
+  {
+   "site": "dem_center",
+   "utc": "2028-10-04T04:00Z",
+   "body": "earth",
+   "horizons_az": 325.853224457,
+   "horizons_el": 10.115676539,
+   "lunascout_az": 325.852,
+   "lunascout_el": 10.116,
+   "d_az": 0.00122,
+   "d_el": 0.00032
+  },
+  {
+   "site": "athena_actual",
+   "utc": "2025-11-22T06:00Z",
+   "body": "sun",
+   "horizons_az": 126.724272742,
+   "horizons_el": -1.603557625,
+   "lunascout_az": 126.724,
+   "lunascout_el": -1.604,
+   "d_az": 0.00027,
+   "d_el": 0.00044
+  },
+  {
+   "site": "athena_actual",
+   "utc": "2025-11-22T06:00Z",
+   "body": "earth",
+   "horizons_az": 328.420137365,
+   "horizons_el": -2.347858303,
+   "lunascout_az": 328.42,
+   "lunascout_el": -2.348,
+   "d_az": 0.00014,
+   "d_el": 0.00014
+  },
+  {
+   "site": "athena_actual",
+   "utc": "2027-05-23T09:00Z",
+   "body": "sun",
+   "horizons_az": 299.569014893,
+   "horizons_el": 1.064313532,
+   "lunascout_az": 299.569,
+   "lunascout_el": 1.064,
+   "d_az": 1e-05,
+   "d_el": 0.00031
+  },
+  {
+   "site": "athena_actual",
+   "utc": "2027-05-23T09:00Z",
+   "body": "earth",
+   "horizons_az": 332.761482996,
+   "horizons_el": 0.203632944,
+   "lunascout_az": 332.761,
+   "lunascout_el": 0.204,
+   "d_az": 0.00048,
+   "d_el": 0.00037
+  },
+  {
+   "site": "athena_actual",
+   "utc": "2028-10-04T04:00Z",
+   "body": "sun",
+   "horizons_az": 323.296299512,
+   "horizons_el": 5.758600928,
+   "lunascout_az": 323.296,
+   "lunascout_el": 5.759,
+   "d_az": 0.0003,
+   "d_el": 0.0004
+  },
+  {
+   "site": "athena_actual",
+   "utc": "2028-10-04T04:00Z",
+   "body": "earth",
+   "horizons_az": 328.360337221,
+   "horizons_el": 10.768022284,
+   "lunascout_az": 328.36,
+   "lunascout_el": 10.768,
+   "d_az": 0.00034,
+   "d_el": 2e-05
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2025-11-22T06:00Z",
+   "body": "sun",
+   "horizons_az": 26.147414794,
+   "horizons_el": 1.809218092,
+   "lunascout_az": 26.14746155357024,
+   "lunascout_el": 1.8092193621491863,
+   "d_az": 5e-05,
+   "d_el": 0.0
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2025-11-22T06:00Z",
+   "body": "earth",
+   "horizons_az": 227.657427606,
+   "horizons_el": -7.002441297,
+   "lunascout_az": 227.6465527566695,
+   "lunascout_el": -7.003780861500202,
+   "d_az": 0.01087,
+   "d_el": 0.00134
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2027-01-01T00:00Z",
+   "body": "sun",
+   "horizons_az": 133.339447059,
+   "horizons_el": 0.787434525,
+   "lunascout_az": 133.3393976008117,
+   "lunascout_el": 0.7874362089635243,
+   "d_az": 5e-05,
+   "d_el": 0.0
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2027-01-01T00:00Z",
+   "body": "earth",
+   "horizons_az": 237.435195075,
+   "horizons_el": -6.425850775,
+   "lunascout_az": 237.42743933439516,
+   "lunascout_el": -6.427223340701533,
+   "d_az": 0.00776,
+   "d_el": 0.00137
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2027-05-23T09:00Z",
+   "body": "sun",
+   "horizons_az": 198.970331208,
+   "horizons_el": -1.81911137,
+   "lunascout_az": 198.9702821909002,
+   "lunascout_el": -1.81911014378331,
+   "d_az": 5e-05,
+   "d_el": 0.0
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2027-05-23T09:00Z",
+   "body": "earth",
+   "horizons_az": 232.118883683,
+   "horizons_el": -4.629018859,
+   "lunascout_az": 232.10948341450825,
+   "lunascout_el": -4.629648492373119,
+   "d_az": 0.0094,
+   "d_el": 0.00063
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2028-10-04T04:00Z",
+   "body": "sun",
+   "horizons_az": 222.90551701,
+   "horizons_el": 1.333875847,
+   "lunascout_az": 222.9054835054068,
+   "lunascout_el": 1.3338798840977115,
+   "d_az": 3e-05,
+   "d_el": 0.0
+  },
+  {
+   "site": "shackleton(table)",
+   "utc": "2028-10-04T04:00Z",
+   "body": "earth",
+   "horizons_az": 228.168364429,
+   "horizons_el": 6.099092923,
+   "lunascout_az": 228.1576502696971,
+   "lunascout_el": 6.102059080282025,
+   "d_az": 0.01071,
+   "d_el": 0.00297
+  }
+ ]
+}
