@@ -21,6 +21,7 @@ import copy
 import json
 import math
 import os
+import threading
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
@@ -33,7 +34,7 @@ from .errors import EngineError
 from .grid import GridSet, HorizonGrid, load_grids
 from .metrics import CLASS_NAMES, NOT_VIABLE, RISKY, VIABLE
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EPHEMERIS_FILE = REPO_ROOT / "data" / "ephemeris" / "sun_earth_vectors.npz"
 
@@ -54,7 +55,7 @@ DEFAULTS = {
     "mission_days": 7,
     "ellipse": {"semi_major_m": 1000, "semi_minor_m": 600, "azimuth_deg": 0},
     "limits": {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8,
-               "min_sun_margin_deg": None},     # None = derived from the DEM level of each point
+               "min_sun_margin_deg": 0},         # real data only: 0 unless the user sets a margin
     "options": {"risk_margin": 0.2, "delay_days_max": 30, "include_recommendations": True,
                 "observer_height_m": 2.0},
 }
@@ -68,24 +69,38 @@ SOURCES_HORIZONS = ("JPL Horizons System (Solar System Dynamics Group, NASA JPL)
 SOURCES_REGIONAL = ("LRO LOLA 20 m/px and 40 m/px south polar LDEM (LRO-L-LOLA-4-GDR-V1.0, product v2.0, "
                     "NASA PDS Geosciences Node; Smith et al. 2017)")
 MAX_SLOPE_SAMPLES = 250000   # slope samples for "ellipse area over max slope"
-# Required Sun clearance by DEM level (ENGINE.md, "Sun clearance"), unless the user sets one:
-#   5 m PGDA tile: 0 deg. The tile was made for landing-site illumination studies (Barker et al.
-#     2021), and relief able to block panels 2 m above the ground spans at least one 5 m pixel,
-#     so it is resolved.
-#   coarse 20 m DEM: atan(1 m / 20 m) = 2.86 deg, a heuristic for unresolved sub-pixel relief.
-FINE_TILE_SUN_MARGIN_DEG = 0.0
-UNRESOLVED_RELIEF_M = 1.0
-LOW_SUN_MARGIN_TEXT = "Sun clearance below the terrain-data uncertainty margin (coarse DEM)"
+# Required Sun clearance: 0 by default (real DEM + Horizons only, no safety margin). It is an optional
+# user setting; low_sun_margin appears only when the user sets a margin > 0 (ENGINE.md, "Sun clearance").
+LOW_SUN_MARGIN_TEXT = "Sun clearance below the margin set by the user"
 
 
-def coarse_sun_margin_deg(pixel_m: float) -> float:
-    """atan(UNRESOLVED_RELIEF_M / pixel_m) in degrees: 2.86 for the 20 m DEM."""
-    return math.degrees(math.atan(UNRESOLVED_RELIEF_M / float(pixel_m)))
+class _LRU:
+    """Small thread-safe LRU cache (one lock around every get / insert / evict)."""
+
+    def __init__(self, maxsize: int):
+        self.maxsize = maxsize
+        self._d: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            if key in self._d:
+                self._d.move_to_end(key)
+                return self._d[key]
+        return None
+
+    def put(self, key, value):
+        with self._lock:
+            self._d[key] = value
+            self._d.move_to_end(key)
+            while len(self._d) > self.maxsize:
+                self._d.popitem(last=False)
+
+    def __len__(self):
+        with self._lock:
+            return len(self._d)
 
 
-def auto_sun_margin_deg(on_fine_tile, coarse_pixel_m: float):
-    """Default required Sun clearance per point (array or bool in, same shape out)."""
-    return np.where(on_fine_tile, FINE_TILE_SUN_MARGIN_DEG, coarse_sun_margin_deg(coarse_pixel_m))
 BEARING_NAMES = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 # Distinctive spots picked from the terrain itself (descriptive labels, NOT official names).
@@ -105,7 +120,7 @@ CURATED_BY_SITE: dict[str, list[dict]] = {
 # Wikipedia "IM-2" / "Mons Mouton" (actual touchdown).
 CURATED_REAL_SITES: list[dict] = [
     {"id": "im2_athena_intended", "name": "IM-2 Athena intended site", "lat": -84.78, "lon": 29.13},
-    {"id": "im2_athena_actual", "name": "IM-2 Athena actual touchdown", "lat": -84.7906, "lon": 29.1957},
+    {"id": "im2_athena_actual", "name": "IM-2 Athena actual touchdown", "lat": -84.79059, "lon": 29.19567},
 ]
 
 
@@ -134,9 +149,9 @@ class _Engine:
         clat, clon = geo.xy_to_latlon(cx, cy)
         self.center = (float(clat), float(clon))
         self.hillshade_bounds = [float(v) for v in terrain.hillshade_bounds(2048)]
-        self.fly_cache: OrderedDict = OrderedDict()
-        self.target_cache: OrderedDict = OrderedDict()
-        self.result_cache: OrderedDict = OrderedDict()
+        self.fly_cache = _LRU(8)
+        self.target_cache = _LRU(64)
+        self.result_cache = _LRU(32)
 
     def in_area(self, x, y):
         """True where a point is inside one of the analyzable rectangles."""
@@ -266,7 +281,7 @@ def normalize_request(request: dict) -> dict:
             "max_comm_gap_h": _num(limits, "max_comm_gap_h", *lim["max_comm_gap_h"]),
             "min_earth_pct": _num(limits, "min_earth_pct", *lim["min_earth_pct"]),
             "max_slope_deg": _num(limits, "max_slope_deg", *lim["max_slope_deg"]),
-            "min_sun_margin_deg": (None if limits.get("min_sun_margin_deg") is None else
+            "min_sun_margin_deg": (0.0 if limits.get("min_sun_margin_deg") is None else
                                    _num(limits, "min_sun_margin_deg", *lim["min_sun_margin_deg"])),
         },
         "options": {
@@ -361,9 +376,9 @@ def _sample_points(eng: _Engine, frame: _Frame, h_obs: float):
 
     key = (round(frame.x0, 1), round(frame.y0, 1), frame.a, frame.b,
            round(float(np.degrees(np.arctan2(frame.major[0], frame.major[1]))), 4), h_obs)
-    if key in eng.fly_cache:
-        eng.fly_cache.move_to_end(key)
-        return eng.fly_cache[key]
+    hit = eng.fly_cache.get(key)
+    if hit is not None:
+        return hit
     x, y, pitch = frame.hex_points(FLY_POINTS)
     keep = eng.in_area(x, y)
     x, y = x[keep], y[keep]
@@ -378,21 +393,17 @@ def _sample_points(eng: _Engine, frame: _Frame, h_obs: float):
     out = {"mode": "on_the_fly", "x": x, "y": y, "lat": lat, "lon": lon,
            "slope": eng.terrain.slope_at(x, y), "horizon": elev,
            "n_candidates": int(x.size), "spacing_m": pitch, "reason": reason}
-    eng.fly_cache[key] = out
-    while len(eng.fly_cache) > 8:
-        eng.fly_cache.popitem(last=False)
+    eng.fly_cache.put(key, out)
     return out
 
 
 def _target_horizon(eng: _Engine, x: float, y: float, h_obs: float) -> horizon.Horizon:
     key = (round(x, 2), round(y, 2), h_obs)
-    if key in eng.target_cache:
-        eng.target_cache.move_to_end(key)
-        return eng.target_cache[key]
+    hz = eng.target_cache.get(key)
+    if hz is not None:
+        return hz
     hz = horizon.compute_horizon_xy(x, y, h_obs, eng.terrain)
-    eng.target_cache[key] = hz
-    while len(eng.target_cache) > 64:
-        eng.target_cache.popitem(last=False)
+    eng.target_cache.put(key, hz)
     return hz
 
 
@@ -447,16 +458,6 @@ def _curated_sites(eng: _Engine) -> list[dict]:
     return sites
 
 
-def _auto_margins(eng: _Engine) -> dict:
-    """Default required Sun clearance per DEM level, keyed by pixel size in meters (used when
-    limits.min_sun_margin_deg is null): 0 on the 5 m tile, atan(1 m / 20 m) on the 20 m DEM."""
-    out = {f"{eng.terrain.pixel_m:g}": FINE_TILE_SUN_MARGIN_DEG}
-    if eng.layered:
-        px = eng.terrain.layers[1].pixel_m
-        out[f"{px:g}"] = _r(coarse_sun_margin_deg(px), 3)
-    return out
-
-
 def get_meta() -> dict:
     """Body of GET /api/meta (CONTRACT 4.2), filled from the real DEM and ephemeris."""
     eng = _engine()
@@ -480,7 +481,7 @@ def get_meta() -> dict:
         "map": {"hillshade_url": HILLSHADE_URL, "hillshade_bounds_xy_m": eng.hillshade_bounds,
                 "crs_proj4": geo.crs_proj4()},
         "curated_sites": _curated_sites(eng),
-        "defaults": {**copy.deepcopy(DEFAULTS), "min_sun_margin_auto_deg": _auto_margins(eng)},
+        "defaults": copy.deepcopy(DEFAULTS),
         "input_limits": copy.deepcopy(INPUT_LIMITS),
     }
 
@@ -491,13 +492,11 @@ def analyze(request: dict) -> dict:
     eng = _engine()
     req = normalize_request(request)
     key = json.dumps(req, sort_keys=True)
-    if key in eng.result_cache:
-        eng.result_cache.move_to_end(key)
-        return copy.deepcopy(eng.result_cache[key])
+    hit = eng.result_cache.get(key)
+    if hit is not None:
+        return copy.deepcopy(hit)
     result = _analyze(eng, req)
-    eng.result_cache[key] = result
-    while len(eng.result_cache) > 32:
-        eng.result_cache.popitem(last=False)
+    eng.result_cache.put(key, result)
     return copy.deepcopy(result)
 
 
@@ -557,13 +556,8 @@ def _analyze(eng: _Engine, req: dict) -> dict:
     target_fine = bool(eng.fine_layer(tx, ty))
     coarse_px = float(eng.terrain.layers[1].pixel_m) if eng.layered else float(eng.terrain.pixel_m)
     fine_px = float(eng.terrain.pixel_m)
-    user_margin = limits.get("min_sun_margin_deg")
-    if user_margin is None:
-        margin_req = auto_sun_margin_deg(fine_pts, coarse_px).astype(np.float64)
-        t_margin_req = float(auto_sun_margin_deg(target_fine, coarse_px))
-    else:
-        margin_req = np.full(n_pts, float(user_margin))
-        t_margin_req = float(user_margin)
+    t_margin_req = float(limits.get("min_sun_margin_deg") or 0.0)   # 0 = real data only
+    margin_req = np.full(n_pts, t_margin_req)
 
     # ---- 4. delay loop: metrics + classification for every delay ---------------------
     risk_margin = opts["risk_margin"]
@@ -626,10 +620,8 @@ def _analyze(eng: _Engine, req: dict) -> dict:
         {"id": "min_sun_margin", "label": "Minimum Sun clearance",
          "value": (_r(t_min_margin, 3) if math.isfinite(t_min_margin) else None), "unit": "°",
          "display": (f"{t_min_margin:.1f}°" if math.isfinite(t_min_margin) else "Never lit"),
-         "limit_display": (f"≥ {t_margin_req:.1f}° (set by user)" if user_margin is not None else
-                           f"≥ {t_margin_req:.1f}° (coarse {coarse_px:g} m DEM uncertainty)" if not target_fine else
-                           f"≥ {t_margin_req:.1f}° (5 m tile)"),
-         "pass": bool(math.isfinite(t_min_margin) and t_min_margin >= t_margin_req)},
+         "limit_display": (f"≥ {t_margin_req:.1f}° (set by user)" if t_margin_req > 0 else "Reference"),
+         "pass": (bool(math.isfinite(t_min_margin) and t_min_margin >= t_margin_req) if t_margin_req > 0 else None)},
         {"id": "earth_pct", "label": "Mission time with Earth visible", "value": _r(e_pct, 1), "unit": "%",
          "display": f"{e_pct:.0f}%", "limit_display": f"≥ {limits['min_earth_pct']:g}%",
          "pass": bool(e_pct >= limits["min_earth_pct"])},
@@ -713,7 +705,7 @@ def _analyze(eng: _Engine, req: dict) -> dict:
     if n_low:
         warnings.append(
             f"{n_low} of {n_pts} sample points are amber for '{LOW_SUN_MARGIN_TEXT}': the Sun clears the computed "
-            "horizon by less than the margin, so the terrain data are too coarse to guarantee sunlight there. "
+            "horizon by less than the margin you set. "
             "This is not a computed shadow.")
     if pts["mode"] == "on_the_fly":
         why = {"small_ellipse": "Small ellipse", "no_grid": "Precomputed horizon grid not available",
@@ -826,12 +818,7 @@ def _recommend(eng: _Engine, req: dict, frame: _Frame, p_current: float, sun_vec
     hor_all = np.concatenate([b["horizon"] for b in blocks])
     slope_all = np.concatenate([b["slope"] for b in blocks])
     vis = _visibility(eng, lat_all, lon_all, hor_all, sun_vec, earth_vec)
-    fine_all = np.concatenate([eng.fine_layer(b["x"], b["y"]) for b in blocks])
-    if limits.get("min_sun_margin_deg") is None:
-        coarse_px = float(eng.terrain.layers[1].pixel_m) if eng.layered else float(eng.terrain.pixel_m)
-        req = auto_sun_margin_deg(fine_all, coarse_px).astype(np.float64)
-    else:
-        req = float(limits["min_sun_margin_deg"])
+    req = float(limits.get("min_sun_margin_deg") or 0.0)
     m = metrics.point_metrics(vis["sun_lit"], vis["earth_visible"], sun_margin=vis["sun_margin"])
     codes, _fail, _risk = metrics.classify(m, slope_all, limits, opts["risk_margin"], mission_h, req)
     out, pos = [], 0

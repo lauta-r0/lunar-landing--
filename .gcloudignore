@@ -1,0 +1,34 @@
+# Upload filter for `gcloud run deploy --source .`.
+# Without this file gcloud would use .gitignore, which excludes data/ (the runtime data the image needs).
+# Included on purpose: data/raw/*.tif, data/derived/**, data/ephemeris/*.npz.
+.git
+.gitignore
+.gitattributes
+.claude/
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+.firebase/
+web/
+docs/
+scripts/
+engine/tests/
+api/tests/
+*.md
+requirements-dev.txt
+# raw Horizons responses and precompute temp files
+data/ephemeris/raw*/
+data/ephemeris/*.json
+data/ephemeris/*.txt
+data/derived/**/*.tmp
+data/derived/**/*.part
+data/derived/**/_tmp*
+data/raw/*.tmp
+data/raw/*.part
+data/raw/*.zip
+data/raw/*.lbl

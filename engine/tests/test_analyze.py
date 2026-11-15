@@ -87,7 +87,7 @@ def check_contract_shape(r: dict, req: dict):
                 "summary", "target_metrics", "points", "timeseries", "horizon_profile", "delay_curve",
                 "delay_tolerance_days", "recommendations", "map", "warnings", "sources"]:
         assert key in r, key
-    assert r["schema_version"] == "1.2" and isinstance(r["is_sample"], bool)
+    assert r["schema_version"] == "1.3" and isinstance(r["is_sample"], bool)
     assert r["computed_utc"].endswith("Z") and isinstance(r["compute_ms"], int)
     assert r["coverage"]["in_coverage"] is True and isinstance(r["coverage"]["dem_name"], str)
     for key in ["lat", "lon", "x_m", "y_m", "elevation_m", "slope_deg"]:
@@ -99,7 +99,7 @@ def check_contract_shape(r: dict, req: dict):
     assert s["survival_probability"] == round(s["viable"] / s["n_points"], 3)
     assert s["survival_probability_incl_risky"] == round((s["viable"] + s["risky"]) / s["n_points"], 3)
     assert s["verdict"] in CLASSES
-    assert s["checks_total"] == 8 and 0 <= s["checks_passed"] <= 8
+    assert s["checks_total"] == 7 and 0 <= s["checks_passed"] <= 7
 
     assert [m["id"] for m in r["target_metrics"]] == METRIC_IDS
     for m in r["target_metrics"]:
@@ -136,7 +136,8 @@ def check_contract_shape(r: dict, req: dict):
     if lit_margins:
         assert abs(by_id["min_sun_margin"]["value"] - min(lit_margins)) < 0.002
     else:
-        assert by_id["min_sun_margin"]["value"] is None and by_id["min_sun_margin"]["pass"] is False
+        assert by_id["min_sun_margin"]["value"] is None
+    assert by_id["min_sun_margin"]["pass"] is None               # v1.3: margin 0 -> informative only
     assert set(ts["sun_lit"]) <= {0, 1} and set(ts["earth_visible"]) <= {0, 1}
     assert all(0 <= a < 360.0001 for a in ts["sun_az_deg"])
     lit = [int(e > h) for e, h in zip(ts["sun_el_deg"], ts["horizon_at_sun_deg"])]
@@ -219,13 +220,8 @@ def test_meta_shape(engine_grid):
     assert meta["ephemeris_range_utc"] == ["2025-01-01T00:00:00Z", "2028-12-31T23:00:00Z"]
     assert meta["curated_sites"][0]["id"] == "mons_mouton_center"
     assert meta["defaults"]["limits"] == {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8,
-                                          "min_sun_margin_deg": None}
-    auto = meta["defaults"]["min_sun_margin_auto_deg"]           # v1.2: atan(1 m / pixel) per DEM level
-    import math
-    # 0 on the fine tile; atan(1 m / pixel) on a coarse level (only present with the regional DEM)
-    fine_key = min(auto, key=float)
-    assert auto[fine_key] == 0.0
-    assert all(abs(v - math.degrees(math.atan(1.0 / float(px)))) < 1e-3 for px, v in auto.items() if px != fine_key)
+                                          "min_sun_margin_deg": 0}
+    assert "min_sun_margin_auto_deg" not in meta["defaults"]     # v1.3: real data only, no automatic margin
     assert meta["map"]["hillshade_url"] == "/api/static/hillshade.png" and "+proj=stere" in meta["map"]["crs_proj4"]
 
 
@@ -329,3 +325,14 @@ def test_real_dem_default_request_shape_and_speed():
         az.reset_engine()
         set_terrain(None)
         geo.configure(None)
+
+
+def test_concurrent_analyze(engine_grid):
+    """analyze() is safe to call from several threads (thread-safe LRU caches)."""
+    from concurrent.futures import ThreadPoolExecutor
+    reqs = [center_request(mission_days=2 + (i % 3)) for i in range(8)]
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(az.analyze, reqs))
+    for req, res in zip(reqs, results):
+        assert res["inputs"]["mission_days"] == req["mission_days"]
+        assert az.analyze(req)["summary"] == res["summary"]

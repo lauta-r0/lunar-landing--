@@ -1,0 +1,32 @@
+# Build-context filter (kept in sync with .gcloudignore).
+.git
+.gitignore
+.gitattributes
+.claude/
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+.firebase/
+web/
+docs/
+scripts/
+engine/tests/
+api/tests/
+*.md
+requirements-dev.txt
+# raw Horizons responses and precompute temp files
+data/ephemeris/raw*/
+data/ephemeris/*.json
+data/ephemeris/*.txt
+data/derived/**/*.tmp
+data/derived/**/*.part
+data/derived/**/_tmp*
+data/raw/*.tmp
+data/raw/*.part
+data/raw/*.zip
+data/raw/*.lbl
