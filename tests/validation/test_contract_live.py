@@ -1,5 +1,5 @@
 # Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team.
-"""Contract shape (CONTRACT v1.4 section 4) and internal consistency of live /api/analyze responses.
+"""Contract shape (CONTRACT v1.5 section 4) and internal consistency of live /api/analyze responses.
 
 Beyond key presence, this re-derives values the response itself implies: the center-of-disk lit rule,
 target metrics from the timeseries, summary counts, and every point's class from CONTRACT 4.4.
@@ -49,7 +49,7 @@ def _runs(a, value):
 def test_shape(resp):
     d, s = resp
     assert TOP <= set(d), TOP - set(d)
-    assert d["schema_version"] == "1.4" and d["is_sample"] is False
+    assert d["schema_version"] == "1.5" and d["is_sample"] is False
     assert SUMMARY <= set(d["summary"])
     assert [m["id"] for m in d["target_metrics"]] == METRIC_IDS
     for p in d["points"]:

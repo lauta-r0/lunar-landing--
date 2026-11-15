@@ -1,4 +1,9 @@
-# LunaScout — Shared Contract (v1.4)
+# LunaScout — Shared Contract (v1.5)
+
+> **Changes in v1.5 (2026-11-15, owner decision: map UX)** — `schema_version` is now `"1.5"`. Additive only; no existing field changes.
+> - `GET /api/meta` → `map` and `POST /api/analyze` → `map` gain `hires_bounds_xy_m` (`[x_min, y_min, x_max, y_max]`, extent of the 5 m/px Site20v2 tile, same polar stereographic meters as the other bounds), `hires_label` (`"LOLA 5 m/px"`) and `coarse_label` (`"LOLA 20 m/px"`; `null` only when no coarser level is loaded). The frontend draws this footprint on the map and shows a data-resolution badge.
+> - `GET /api/health` and every response report `"1.5"`.
+>
 
 > **Changes in v1.4 (2026-11-15, team decision: classification rule, validation finding P1)** — `schema_version` is now `"1.4"`.
 > - A sunset during the mission no longer makes a point risky by itself. Darkness is judged only by `longest_dark_h` against `limits.max_dark_h`: not_viable above the limit, risky within `risk_margin` of it. The risky reason `sunset` is removed (it is never emitted); `hours_until_sunset` stays as a metric, now informative.
@@ -60,13 +65,13 @@ LunaScout is a single-screen web app for the lunar south pole. A lander never to
 Base path: `/api`. JSON only. CORS enabled for the frontend origin(s) and `http://localhost:*`.
 
 ### 4.1 `GET /api/health`
-`200 {"status":"ok","engine_ready":true,"schema_version":"1.4"}`
+`200 {"status":"ok","engine_ready":true,"schema_version":"1.5"}`
 
 ### 4.2 `GET /api/meta`
 Lets the frontend set defaults, limits and the map.
 ```json
 {
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "coverage": {
     "dem_name": "LOLA 5 m/px LDEM — Site20v2 (Mons Mouton / Leibnitz beta plateau) + LOLA 20 m/px polar LDEM (...) + LOLA 40 m/px polar LDEM (...)",
     "bounds_xy_m": [-0.0, -0.0, 0.0, 0.0],
@@ -78,7 +83,10 @@ Lets the frontend set defaults, limits and the map.
   "map": {
     "hillshade_url": "/api/static/hillshade.png",
     "hillshade_bounds_xy_m": [0.0, 0.0, 0.0, 0.0],
-    "crs_proj4": "+proj=stere +lat_0=-90 ... +R=1737400 +units=m"
+    "crs_proj4": "+proj=stere +lat_0=-90 ... +R=1737400 +units=m",
+    "hires_bounds_xy_m": [0.0, 0.0, 0.0, 0.0],
+    "hires_label": "LOLA 5 m/px",
+    "coarse_label": "LOLA 20 m/px"
   },
   "curated_sites": [
     {"id": "mons_mouton_center", "name": "Mons Mouton (DEM center)", "lat": 0.0, "lon": 0.0},
@@ -124,7 +132,7 @@ Lets the frontend set defaults, limits and the map.
 **Response 200**
 ```json
 {
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "is_sample": false,
   "computed_utc": "2026-11-15T14:03:22Z",
   "compute_ms": 1840,
@@ -190,7 +198,10 @@ Lets the frontend set defaults, limits and the map.
     "hillshade_url": "/api/static/hillshade.png",
     "hillshade_bounds_xy_m": [0.0, 0.0, 0.0, 0.0],
     "view_bounds_xy_m": [0.0, 0.0, 0.0, 0.0],
-    "ellipse_polygon_xy_m": [[0.0, 0.0]]
+    "ellipse_polygon_xy_m": [[0.0, 0.0]],
+    "hires_bounds_xy_m": [0.0, 0.0, 0.0, 0.0],
+    "hires_label": "LOLA 5 m/px",
+    "coarse_label": "LOLA 20 m/px"
   },
 
   "warnings": ["Horizon is modeled out to 100–101 km from the target: LOLA 5 m/px tile nearby, LOLA 20 m and 40 m/px polar DEM beyond it. Terrain farther than 100 km is not modeled."],
@@ -215,6 +226,7 @@ Field rules:
 - `delay_curve` has one entry per day from 0 to `delay_days_max`. The landing time shifts by that many days and everything is recomputed. `delay_tolerance_days` = the largest d such that the target stays viable (class viable or risky) for every delay 0..d. If the target is already not viable at 0 days, it is -1.
 - `recommendations`: up to 3, only those with `survival_probability` greater than the current one, sorted descending. Empty list if none.
 - `map.view_bounds_xy_m`: suggested view window (target-centered, ≥ 5 km wide, aspect 3:2).
+- `map.hires_bounds_xy_m` (v1.5, also in `GET /api/meta` → `map`): extent of the 5 m/px tile. Points inside it have `slope_dem_m` 5; outside it the terrain comes from the 20 m/px DEM. `hires_label` / `coarse_label` name the two levels for the map legend.
 
 ### 4.4 Classification rules (engine must implement exactly)
 For each point, with mission window `[landing, landing + mission_days)` sampled hourly:

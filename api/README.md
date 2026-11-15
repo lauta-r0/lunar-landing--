@@ -1,6 +1,6 @@
 # LunaScout API
 
-FastAPI wrapper around the terrain engine (CONTRACT section 4, schema 1.4).
+FastAPI wrapper around the terrain engine (CONTRACT section 4, schema 1.5).
 
 ```bash
 pip install -r api/requirements.txt          # server

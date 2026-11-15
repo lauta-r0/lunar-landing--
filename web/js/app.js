@@ -4,6 +4,7 @@
 
 import { getMeta, analyze, loadFixture, apiUrl, ApiError } from "./api.js";
 import { MapView } from "./map.js";
+import { SouthPolarStereo } from "./proj.js";
 import {
   CLASS_LABEL, METRIC_TIPS, esc, fixText, fmtLat, fmtLon, fmtHours, fmtUtc, hhmmUtc, reasonText,
 } from "./format.js";
@@ -41,6 +42,7 @@ const state = {
   lastRunKey: null,
   originTarget: null,
   timeline: null,
+  proj: new SouthPolarStereo(null), // replaced by the CRS from /api/meta
 };
 
 /* ================= markers (inline SVG, same shapes as the map) ================= */
@@ -153,6 +155,39 @@ function goToRegionCenter() {
   if (!c) return;
   $(FIELDS.lat).value = c.center_lat;
   $(FIELDS.lon).value = c.center_lon;
+  run({ fromUser: true });
+}
+
+/** True when map x/y metres fall inside the analyzable area box of /api/meta (unknown → true). */
+function insideCoverageXY(x, y) {
+  const b = state.meta?.coverage?.bounds_xy_m;
+  if (!b) return true;
+  return x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3];
+}
+
+/* ================= pick a target on the map ================= */
+
+function pickTarget(x, y) {
+  if (state.running) return; // respect the "Analyzing…" lock
+  const [lat, lon] = state.proj.toLatLon(x, y);
+  $(FIELDS.lat).value = lat.toFixed(5);
+  $(FIELDS.lon).value = lon.toFixed(5);
+  map.setPin([x, y]);
+  map.centerOn(x, y);
+  if (!insideCoverageXY(x, y)) {
+    // outside the terrain data: no API call, show the out-of-area message
+    clearErrors();
+    showAreaError(true);
+    fieldError("lat", "e-lat", "Outside the analyzable area.");
+    fieldError("lon", "e-lon", "Outside the analyzable area.");
+    setNotices([{
+      kind: "error", title: "Outside the terrain data",
+      text: `The picked point (${fmtLat(lat)}, ${fmtLon(lon)}) is outside the analyzable area. Pick a point inside the ${AREA_NAME}, or start from its center.`,
+      actions: state.meta?.coverage ? [{ label: "Go to region center", onClick: goToRegionCenter }] : [],
+    }]);
+    updateDirty();
+    return;
+  }
   run({ fromUser: true });
 }
 
@@ -338,6 +373,7 @@ async function run({ fromUser = false } = {}) {
     state.lastReq = req;
     setNotices([]);
     render(resp);
+    map.setPin(null);
     saveInputs(req);
   } catch (err) {
     handleRunError(err, req);
@@ -462,9 +498,12 @@ function render(resp) {
   map.setHillshade(hsUrl, mapInfo.hillshade_bounds_xy_m || state.meta?.map?.hillshade_bounds_xy_m);
   ["ov-sky", "ov-north", "ov-scale", "ov-zoom"].forEach((id) => { $(id).hidden = false; });
   $("map-empty").hidden = true;
+  const hires = resp.map?.hires_bounds_xy_m ? resp.map : state.meta?.map || {};
+  map.setHires(hires.hires_bounds_xy_m, hires.hires_label, hires.coarse_label);
+  $("legend-hires").hidden = !hires.hires_bounds_xy_m;
   map.setData(resp);
   renderSky(resp);
-  $("legend-coarse").hidden = !(resp.points || []).some((p) => p.slope_coarse);
+  checkRoundTrip(t);
 
   // ---- survival ----
   renderSurvival(resp);
@@ -492,6 +531,21 @@ function render(resp) {
 
   renderAbout($("about-body"), resp, state.meta);
   markActiveChip();
+}
+
+/**
+ * The inverse projection used by click-to-pick must map the target's x/y back to its lat/lon within
+ * 1e-5°. The API rounds x_m/y_m to 0.1 m, which near the pole is up to ~2e-5° of longitude
+ * (0.05 m / 140 km), so that rounding is added to the longitude tolerance.
+ */
+function checkRoundTrip(t) {
+  if (!t || !isFinite(t.x_m) || !isFinite(t.y_m)) return;
+  const [lat, lon] = state.proj.toLatLon(t.x_m, t.y_m);
+  const rho = Math.hypot(t.x_m - state.proj.x0, t.y_m - state.proj.y0) || 1;
+  const xyRoundingDeg = ((0.05 * Math.SQRT2) / rho) * (180 / Math.PI);
+  const okLat = Math.abs(lat - t.lat) <= 1e-5;
+  const okLon = Math.abs(lon - t.lon) <= 1e-5 + xyRoundingDeg;
+  if (!okLat || !okLon) console.warn("LunaScout: map projection round trip off", { lat, lon, target: t });
 }
 
 function renderSky(resp) {
@@ -540,6 +594,24 @@ function renderSurvival(resp) {
     <span style="color:var(--muted)">of ${pts.length} sample points</span>`;
   const incl = Math.round(((c.viable + c.risky) / total) * 1000) / 10;
   $("incl-risky").textContent = `Including risky points: ${incl % 1 === 0 ? incl.toFixed(0) : incl.toFixed(1)}%`;
+  renderDataRes(pts);
+}
+
+/** Badge: which terrain resolution the sample points use (points[].slope_dem_m / slope_coarse). */
+function renderDataRes(pts) {
+  const el = $("data-res");
+  if (!pts.length) { el.hidden = true; return; }
+  const px = (p) => p.slope_dem_m ?? (p.slope_coarse ? 20 : 5);
+  const coarse = pts.filter((p) => p.slope_coarse ?? px(p) > 5).length;
+  const sizes = [...new Set(pts.map(px))].sort((a, b) => a - b).map((v) => `${+v.toFixed(1)}`);
+  let text, spoken;
+  if (coarse === 0) { text = `${sizes[0]} M · HIGH`; spoken = `${sizes[0]} metre, high`; }
+  else if (coarse === pts.length) { text = `${sizes[sizes.length - 1]} M · LOWER`; spoken = `${sizes[sizes.length - 1]} metre, lower`; }
+  else { text = `MIXED · ${sizes.join("/")} M`; spoken = `mixed, ${sizes.join(" and ")} metre`; }
+  el.hidden = false;
+  const badge = $("data-res-text");
+  badge.textContent = `DATA RESOLUTION · ${text}`;
+  badge.setAttribute("aria-label", `Data resolution: ${spoken}`);
 }
 
 function renderMetrics(resp) {
@@ -706,6 +778,7 @@ const map = new MapView({
   onTip: pointTip,
 });
 map.onViewChange = syncScale;
+map.onPickTarget = pickTarget;
 
 async function boot() {
   initTooltips($("tooltip"));
@@ -730,6 +803,7 @@ async function boot() {
   try {
     state.meta = await getMeta();
     state.live = true;
+    state.proj = new SouthPolarStereo(state.meta.map?.crs_proj4);
   } catch (err) {
     console.warn("API unreachable, showing sample data", err);
     $("map-empty").textContent = "API offline";

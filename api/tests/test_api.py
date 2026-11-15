@@ -21,15 +21,20 @@ def client():
 def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "engine_ready": True, "schema_version": "1.4"}
+    assert r.json() == {"status": "ok", "engine_ready": True, "schema_version": "1.5"}
 
 
 def test_meta(client):
     m = client.get("/api/meta").json()
-    assert m["schema_version"] == "1.4"
+    assert m["schema_version"] == "1.5"
     assert m["defaults"]["limits"]["min_sun_margin_deg"] == 0
     assert "min_sun_margin_auto_deg" not in m["defaults"]
     assert m["map"]["hillshade_url"] == "/api/static/hillshade.png"
+    # schema 1.5: extent of the 5 m tile, inside the hillshade, same polar stereographic meters
+    hx0, hy0, hx1, hy1 = m["map"]["hires_bounds_xy_m"]
+    sx0, sy0, sx1, sy1 = m["map"]["hillshade_bounds_xy_m"]
+    assert hx0 < hx1 and hy0 < hy1 and sx0 <= hx0 and sy0 <= hy0 and hx1 <= sx1 and hy1 <= sy1
+    assert m["map"]["hires_label"] == "LOLA 5 m/px" and m["map"]["coarse_label"] == "LOLA 20 m/px"
     assert any(s["id"] == "mons_mouton_center" for s in m["curated_sites"])
 
 
@@ -46,8 +51,11 @@ def test_analyze_default_and_cache(client):
     body = r.json()
     for k in TOP_KEYS:
         assert k in body, k
-    assert body["schema_version"] == "1.4" and body["is_sample"] is False
+    assert body["schema_version"] == "1.5" and body["is_sample"] is False
     assert body["inputs"]["limits"]["min_sun_margin_deg"] == 0
+    meta_map = client.get("/api/meta").json()["map"]
+    for k in ("hires_bounds_xy_m", "hires_label", "coarse_label"):
+        assert body["map"][k] == meta_map[k], k
     assert "low_sun_margin" not in {x for p in body["points"] for x in p["reasons"]}
     r2 = client.post("/api/analyze", json={"target": SUMMIT, "mission_days": 7})   # same normalized request
     assert r2.headers["X-Cache"] == "HIT" and r2.json()["summary"] == body["summary"]

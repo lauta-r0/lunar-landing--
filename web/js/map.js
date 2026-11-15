@@ -1,6 +1,7 @@
 // Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team.
 
-// Canvas map: LOLA hillshade + km grid + landing ellipse + classified points + target.
+// Canvas map: LOLA hillshade + km grid + 5 m data footprint + landing ellipse + classified points
+// + target. A click on empty terrain picks a new target (onPickTarget); a click on a point pins it.
 // World coordinates are south polar stereographic metres (x right, y up). One uniform
 // metres-per-pixel factor is used on both axes, so the terrain, the ellipse, the grid
 // and the scale bar always stay aligned.
@@ -12,6 +13,7 @@ const C = {
 };
 
 const NICE_STEPS = [250, 500, 1000, 2000, 5000, 10000];
+const CLICK_SLOP_PX = 5; // a press that moves farther than this is a drag (pan), not a click
 
 export class MapView {
   constructor({ frame, canvas, tip, overlays, onTip }) {
@@ -31,6 +33,9 @@ export class MapView {
     this.cw = 0;
     this.ch = 0;
     this.onViewChange = null;
+    this.onPickTarget = null; // (x_m, y_m) => void
+    this.hires = null; // {bounds, label, coarseLabel}
+    this.pin = null; // [x_m, y_m] of the last picked spot, until its analysis arrives
 
     this._bindEvents();
     new ResizeObserver(() => this._resize()).observe(frame);
@@ -49,6 +54,22 @@ export class MapView {
     img.onload = () => { this.img = img; this.draw(); };
     img.onerror = () => { this.img = null; this.imgFailed = true; this.draw(); };
     img.src = url;
+  }
+
+  /** Extent of the 5 m/px tile (schema 1.5 map.hires_bounds_xy_m) and the labels of the two levels. */
+  setHires(bounds, label, coarseLabel) {
+    this.hires = Array.isArray(bounds) && bounds.length === 4 ? { bounds, label, coarseLabel } : null;
+    this.draw();
+  }
+
+  /** Pin at a picked spot (map metres); null clears it. */
+  setPin(xy) { this.pin = xy; this.draw(); }
+
+  /** Move the view centre to a world point, keeping the zoom. */
+  centerOn(x, y) {
+    if (!this.view) return;
+    this.view.cx = x; this.view.cy = y;
+    this.draw();
   }
 
   /** resp = /api/analyze response. Keeps the current zoom when the target is unchanged. */
@@ -70,6 +91,8 @@ export class MapView {
     const sameTarget = prevTarget && this.view &&
       Math.abs(prevTarget.x_m - resp.target.x_m) < 1 && Math.abs(prevTarget.y_m - resp.target.y_m) < 1;
     if (!sameTarget) this.resetView(false);
+    // the picked spot is now the analysed target: its crosshair replaces the pin
+    if (this.pin && Math.hypot(this.pin[0] - resp.target.x_m, this.pin[1] - resp.target.y_m) < 30) this.pin = null;
     this.draw();
   }
 
@@ -161,6 +184,9 @@ export class MapView {
     // 2. km grid relative to the target
     this._drawGrid();
 
+    // 2b. footprint of the 5 m/px data (thin, dashed: it must not compete with the points)
+    this._drawHires();
+
     // 3. landing ellipse
     const poly = this.data.map && this.data.map.ellipse_polygon_xy_m;
     if (poly && poly.length > 2) {
@@ -183,7 +209,13 @@ export class MapView {
     for (const p of this.points) {
       const [px, py] = this.toPx(p.x_m, p.y_m);
       if (px < -pad || py < -pad || px > cw + pad || py > ch + pad) continue;
-      drawMarker(ctx, p.class, px, py, r, !!p.slope_coarse);
+      drawMarker(ctx, p.class, px, py, r);
+    }
+
+    // 4b. pin at a picked spot while its analysis runs (or when it was outside the data)
+    if (this.pin) {
+      const [qx, qy] = this.toPx(this.pin[0], this.pin[1]);
+      drawPin(ctx, qx, qy);
     }
 
     // 5. target crosshair (no text label, so it never covers points)
@@ -282,6 +314,48 @@ export class MapView {
     }
   }
 
+  _drawHires() {
+    if (!this.hires) return;
+    const ctx = this.ctx;
+    const { cw, ch } = this;
+    const b = this.hires.bounds;
+    const [l, t] = this.toPx(b[0], b[3]);
+    const [r, bt] = this.toPx(b[2], b[1]);
+    if (r < 0 || l > cw || bt < 0 || t > ch) return; // tile entirely off screen
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.strokeRect(Math.round(l) + 0.5, Math.round(t) + 0.5, Math.round(r - l), Math.round(bt - t));
+    ctx.setLineDash([]);
+
+    // Labels sit on one visible edge: "5 M DATA" just inside it, "20 M DATA" just outside it.
+    const inTxt = labelFor(this.hires.label, "5 M DATA");
+    const outTxt = labelFor(this.hires.coarseLabel, "20 M DATA");
+    ctx.font = "600 10px Barlow, Arial, sans-serif";
+    ctx.textBaseline = "middle";
+    const rects = this._overlayRects();
+    const fits = (x0, y0, x1, y1) => x0 >= 4 && y0 >= 4 && x1 <= cw - 4 && y1 <= ch - 4 &&
+      !rects.some((q) => x0 < q.x1 && x1 > q.x0 && y0 < q.y1 && y1 > q.y0);
+    const wIn = spacedWidth(ctx, inTxt), wOut = spacedWidth(ctx, outTxt), H = 10, g = 7;
+    const wMax = Math.max(wIn, wOut);
+    const segX = [Math.max(l, 0), Math.min(r, cw)], segY = [Math.max(t, 0), Math.min(bt, ch)];
+    // candidate spots along each visible edge (near both ends, then the middle): [inside box, outside box]
+    const along = (a0, a1, w) => [a0 + 12, a1 - 12 - w, (a0 + a1) / 2 - w / 2];
+    const cands = [];
+    if (t >= 0 && t <= ch) for (const x of along(segX[0], segX[1], wMax)) cands.push([[x, t + g, wIn], [x, t - g - H, wOut]]);
+    if (bt >= 0 && bt <= ch) for (const x of along(segX[0], segX[1], wMax)) cands.push([[x, bt - g - H, wIn], [x, bt + g, wOut]]);
+    if (l >= 0 && l <= cw) for (const y of along(segY[0], segY[1], H)) cands.push([[l + g, y, wIn], [l - g - wOut, y, wOut]]);
+    if (r >= 0 && r <= cw) for (const y of along(segY[0], segY[1], H)) cands.push([[r - g - wIn, y, wIn], [r + g, y, wOut]]);
+    for (const [a, o] of cands) {
+      if (!fits(a[0], a[1], a[0] + a[2], a[1] + H)) continue;
+      spacedLabel(ctx, inTxt, a[0], a[1] + H / 2);
+      if (fits(o[0], o[1], o[0] + o[2], o[1] + H)) spacedLabel(ctx, outTxt, o[0], o[1] + H / 2);
+      break;
+    }
+    ctx.restore();
+  }
+
   /* ---------------- interaction ---------------- */
 
   _pick(px, py) {
@@ -299,7 +373,9 @@ export class MapView {
   _showTip(p) {
     if (!p || !this.onTip) return this._hideTip();
     const pinned = this.pinnedId === p.id;
-    this.tipEl.innerHTML = this.onTip(p) + (pinned ? '<button type="button" class="tip-close" aria-label="Close details">✕</button>' : "");
+    this.tipEl.innerHTML = this.onTip(p) + (pinned
+      ? '<button type="button" class="btn btn--sm tip-use">Set as target</button><button type="button" class="tip-close" aria-label="Close details">✕</button>'
+      : "");
     this.tipEl.classList.toggle("is-pinned", pinned);
     this.tipEl.hidden = false;
     const [px, py] = this.toPx(p.x_m, p.y_m);
@@ -312,9 +388,15 @@ export class MapView {
     this.tipEl.style.top = `${y}px`;
     const close = this.tipEl.querySelector(".tip-close");
     if (close) close.addEventListener("click", () => { this.pinnedId = null; this._hideTip(); this.draw(); });
+    const use = this.tipEl.querySelector(".tip-use");
+    if (use) use.addEventListener("click", () => { this.pinnedId = null; this._hideTip(); this.draw(); this._pickTarget(p.x_m, p.y_m); });
   }
 
   _hideTip() { this.tipEl.hidden = true; this.tipEl.classList.remove("is-pinned"); }
+
+  _pickTarget(x, y) {
+    if (this.onPickTarget) this.onPickTarget(x, y);
+  }
 
   _bindEvents() {
     const cv = this.canvas;
@@ -329,7 +411,7 @@ export class MapView {
       const px = e.clientX - rect.left, py = e.clientY - rect.top;
       if (drag) {
         const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-        if (drag.moved || Math.abs(dx) + Math.abs(dy) > 4) {
+        if (drag.moved || Math.hypot(dx, dy) > CLICK_SLOP_PX) {
           drag.moved = true;
           cv.style.cursor = "grabbing";
           this.pan(dx, dy);
@@ -352,14 +434,21 @@ export class MapView {
       const wasDrag = drag && drag.moved;
       drag = null;
       if (wasDrag) return;
+      if (!this.view) return;
       const rect = cv.getBoundingClientRect();
-      const p = this._pick(e.clientX - rect.left, e.clientY - rect.top);
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      const p = this._pick(px, py);
       if (p) {
         this.pinnedId = this.pinnedId === p.id ? null : p.id;
         this.hoverId = p.id;
         this.pinnedId != null ? this._showTip(p) : this._hideTip();
-      } else {
+      } else if (this.pinnedId != null) {
+        // the first click away from a pinned point only closes its details
         this.pinnedId = null; this.hoverId = null; this._hideTip();
+      } else {
+        this.hoverId = null; this._hideTip();
+        const [wx, wy] = this.toWorld(px, py);
+        this._pickTarget(wx, wy);
       }
       this.draw();
     });
@@ -383,6 +472,7 @@ export class MapView {
       else if (k === "+" || k === "=") this.zoom(1.25);
       else if (k === "-" || k === "_") this.zoom(1 / 1.25);
       else if (k === "0") this.resetView();
+      else if (k === "Enter" && this.view) this._pickTarget(this.view.cx, this.view.cy);
       else if (k === "Escape") { this.pinnedId = null; this.hoverId = null; this._hideTip(); this.draw(); }
       else return;
       e.preventDefault();
@@ -393,20 +483,16 @@ export class MapView {
 
 /* ---------------- marker shapes ---------------- */
 
-export function drawMarker(ctx, cls, x, y, r, coarse) {
+/** Same filled shapes for every point, whatever DEM resolution it comes from (the badge and the tooltip say that). */
+export function drawMarker(ctx, cls, x, y, r) {
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   if (cls === "viable") {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    if (coarse) {
-      ctx.lineWidth = 3.4; ctx.strokeStyle = "#000"; ctx.stroke();
-      ctx.lineWidth = 1.6; ctx.strokeStyle = C.viable; ctx.stroke();
-    } else {
-      ctx.fillStyle = C.viable; ctx.fill();
-      ctx.lineWidth = 1; ctx.strokeStyle = "#000"; ctx.stroke();
-    }
+    ctx.fillStyle = C.viable; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = "#000"; ctx.stroke();
   } else if (cls === "risky") {
     const s = r * 1.15;
     ctx.beginPath();
@@ -414,13 +500,8 @@ export function drawMarker(ctx, cls, x, y, r, coarse) {
     ctx.lineTo(x + s * 0.95, y + s * 0.7);
     ctx.lineTo(x - s * 0.95, y + s * 0.7);
     ctx.closePath();
-    if (coarse) {
-      ctx.lineWidth = 3.4; ctx.strokeStyle = "#000"; ctx.stroke();
-      ctx.lineWidth = 1.6; ctx.strokeStyle = C.risky; ctx.stroke();
-    } else {
-      ctx.fillStyle = C.risky; ctx.fill();
-      ctx.lineWidth = 1; ctx.strokeStyle = "#000"; ctx.stroke();
-    }
+    ctx.fillStyle = C.risky; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = "#000"; ctx.stroke();
   } else {
     const s = r * 0.8;
     ctx.beginPath();
@@ -428,13 +509,22 @@ export function drawMarker(ctx, cls, x, y, r, coarse) {
     ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s);
     ctx.lineWidth = Math.max(3.2, r * 0.85); ctx.strokeStyle = "#000"; ctx.stroke();
     ctx.lineWidth = Math.max(1.6, r * 0.42); ctx.strokeStyle = C.not_viable; ctx.stroke();
-    if (coarse) {
-      ctx.beginPath();
-      ctx.arc(x, y, r * 1.35, 0, Math.PI * 2);
-      ctx.setLineDash([1.5, 2]);
-      ctx.lineWidth = 1; ctx.strokeStyle = "#fff"; ctx.stroke();
-    }
   }
+  ctx.restore();
+}
+
+/** Map pin whose tip touches (x, y). */
+function drawPin(ctx, x, y) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.bezierCurveTo(x - 2, y - 6, x - 8, y - 11, x - 8, y - 17);
+  ctx.arc(x, y - 17, 8, Math.PI, 0);
+  ctx.bezierCurveTo(x + 8, y - 11, x + 2, y - 6, x, y);
+  ctx.closePath();
+  ctx.fillStyle = "#fff"; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = "#000"; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y - 17, 3, 0, Math.PI * 2); ctx.fillStyle = "#000"; ctx.fill();
   ctx.restore();
 }
 
@@ -463,4 +553,29 @@ function textWithHalo(ctx, txt, x, y) {
   ctx.strokeText(txt, x, y);
   ctx.fillStyle = "#d4d4dc";
   ctx.fillText(txt, x, y);
+}
+
+const LABEL_TRACKING = 1.2; // px between letters of the small uppercase map labels
+
+/** "LOLA 5 m/px" → "5 M DATA" (fallback when the API gives no label). */
+function labelFor(label, fallback) {
+  const m = /([\d.]+)\s*m\/px/i.exec(label || "");
+  return m ? `${m[1]} M DATA` : fallback;
+}
+
+function spacedWidth(ctx, txt) {
+  return ctx.measureText(txt).width + (txt.length - 1) * LABEL_TRACKING;
+}
+
+/** Small letter-spaced, low-contrast label with a dark halo, left-aligned at (x, y). */
+function spacedLabel(ctx, txt, x, y) {
+  const xs = [];
+  let cx = x;
+  for (const c of txt) { xs.push(cx); cx += ctx.measureText(c).width + LABEL_TRACKING; }
+  const chars = [...txt];
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(0,0,0,0.7)";
+  chars.forEach((c, i) => ctx.strokeText(c, xs[i], y)); // halo first, so it never covers a letter
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  chars.forEach((c, i) => ctx.fillText(c, xs[i], y));
 }

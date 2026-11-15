@@ -34,7 +34,7 @@ from .errors import EngineError
 from .grid import GridSet, HorizonGrid, load_grids
 from .metrics import CLASS_NAMES, NOT_VIABLE, RISKY, VIABLE
 
-SCHEMA_VERSION = "1.4"
+SCHEMA_VERSION = "1.5"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EPHEMERIS_FILE = REPO_ROOT / "data" / "ephemeris" / "sun_earth_vectors.npz"
 
@@ -150,6 +150,11 @@ class _Engine:
         clat, clon = geo.xy_to_latlon(cx, cy)
         self.center = (float(clat), float(clon))
         self.hillshade_bounds = [float(v) for v in terrain.hillshade_bounds(2048)]
+        # extent of the finest level (the 5 m/px tile) and the labels of the levels (schema 1.5)
+        layers = getattr(terrain, "layers", [terrain])
+        self.hires_bounds = [_r(v, 1) for v in layers[0].bounds]
+        self.hires_label = f"LOLA {float(layers[0].pixel_m):g} m/px"
+        self.coarse_label = f"LOLA {float(layers[1].pixel_m):g} m/px" if len(layers) > 1 else None
         self.fly_cache = _LRU(8)
         self.target_cache = _LRU(64)
         self.result_cache = _LRU(32)
@@ -459,6 +464,12 @@ def _curated_sites(eng: _Engine) -> list[dict]:
     return sites
 
 
+def _resolution_block(eng: _Engine) -> dict:
+    """Where the high-resolution data is (schema 1.5): the 5 m tile extent and the level labels."""
+    return {"hires_bounds_xy_m": list(eng.hires_bounds), "hires_label": eng.hires_label,
+            "coarse_label": eng.coarse_label}
+
+
 def get_meta() -> dict:
     """Body of GET /api/meta (CONTRACT 4.2), filled from the real DEM and ephemeris."""
     eng = _engine()
@@ -480,7 +491,7 @@ def get_meta() -> dict:
         "ephemeris_range_utc": [_iso(datetime.fromtimestamp(int(t_unix[0]), timezone.utc)),
                                 _iso(datetime.fromtimestamp(int(t_unix[-1]), timezone.utc))],
         "map": {"hillshade_url": HILLSHADE_URL, "hillshade_bounds_xy_m": eng.hillshade_bounds,
-                "crs_proj4": geo.crs_proj4()},
+                "crs_proj4": geo.crs_proj4(), **_resolution_block(eng)},
         "curated_sites": _curated_sites(eng),
         "defaults": copy.deepcopy(DEFAULTS),
         "input_limits": copy.deepcopy(INPUT_LIMITS),
@@ -738,6 +749,7 @@ def _analyze(eng: _Engine, req: dict) -> dict:
         "hillshade_bounds_xy_m": eng.hillshade_bounds,
         "view_bounds_xy_m": [_r(tx - half_w, 1), _r(ty - half_h, 1), _r(tx + half_w, 1), _r(ty + half_h, 1)],
         "ellipse_polygon_xy_m": [[_r(a, 1), _r(b, 1)] for a, b in zip(px, py)],
+        **_resolution_block(eng),
     }
 
     return {

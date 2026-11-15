@@ -1,8 +1,8 @@
 {
- "schema_version": "1.4",
+ "schema_version": "1.5",
  "is_sample": true,
- "computed_utc": "2026-11-15T12:42:21Z",
- "compute_ms": 559,
+ "computed_utc": "2026-11-15T13:36:56Z",
+ "compute_ms": 190,
  "inputs": {
   "target": {
    "lat": -85.47628,
@@ -10458,7 +10458,15 @@
     71975.1,
     118028.9
    ]
-  ]
+  ],
+  "hires_bounds_xy_m": [
+   60000.0,
+   105000.0,
+   86000.0,
+   131000.0
+  ],
+  "hires_label": "LOLA 5 m/px",
+  "coarse_label": "LOLA 20 m/px"
  },
  "warnings": [
   "Sample data — saved example of a real analysis, shown because the API is offline.",
