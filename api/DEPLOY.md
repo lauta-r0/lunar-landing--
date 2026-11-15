@@ -1,7 +1,8 @@
 # LunaScout API — deploy (Google Cloud Run)
 
 - Project: `lunascout` · Region: `southamerica-east1` · Service: `lunascout-api`
-- URL: https://lunascout-api-855190992553.southamerica-east1.run.app (public, no login)
+- **Public app URL (frontend + API, same origin): https://lunascout.web.app**
+- API URL (Cloud Run, direct): https://lunascout-api-855190992553.southamerica-east1.run.app (public, no login)
 - Config: 2 vCPU, 2 GiB, `--cpu-boost`, min instances 1, max instances 2, env `LUNASCOUT_THREADS=2`.
 - Startup probe: HTTP `/api/health` on 8080, 5 s initial delay, every 5 s, 24 failures allowed (about 2 minutes).
   The port answers only after the engine has loaded (about 14 s locally), so the probe waits for it.
@@ -54,5 +55,31 @@ All checks passed
 ```
 (An earlier run of the same script had `out_of_coverage` reported as failed because of a bug in the script's error-body reading, fixed since; the server answered correctly.)
 
+## Frontend: Firebase Hosting (project `lunascout`, site `lunascout`)
+`firebase.json` serves `web/` and rewrites `/api/**` to the Cloud Run service `lunascout-api` in `southamerica-east1`
+(the rewrite works for that region), so the UI and the API share one origin and CORS does not matter in production.
+`web/config.js` uses `/api` on any host except localhost / 127.0.0.1, where it uses the Cloud Run URL (override by
+defining `window.LUNASCOUT_API` before `config.js` loads). `.firebaserc` points the default project to `lunascout`.
+
+One-time setup (done): Firebase added to the Google Cloud project from the Firebase console (terms accepted, Analytics off);
+`npm install -g firebase-tools`; `firebase login`.
+
+Redeploy the frontend (from the repo root; the API is a separate deploy, see above):
+```powershell
+firebase deploy --only hosting --project lunascout
+```
+Hosting keeps old versions; roll back from the Firebase console (Hosting > Release history). Hosting on the Blaze plan
+(billing is linked to the project) is free within 10 GB storage and 10 GB transfer per month; the site is under 1 MB.
+
+Smoke test through the public URL (it goes through the rewrite):
+```powershell
+powershell -File scripts/smoke_test.ps1 -BaseUrl https://lunascout.web.app
+```
+Result (2026-11-15): all 7 checks passed (health 670 ms, meta 474 ms, analyze 0.9-1.3 s total including the round trip).
+Browser check (headless Chromium, fresh profile) on https://lunascout.web.app: the UI loads, shows "Live" with the default
+analysis already run (P = 0.445, viable), the "IM-2 Athena intended site" quick pick runs (P = 0.931, viable, 10 days from
+2025-03-06 17:31), all `/api/*` calls return 200 through the rewrite, and there are no console errors or mojibake.
+
 ## Not done yet
-Firebase Hosting rewrite (`/api/**` to this service), custom domain, FortiGuard classification and a Cloud Monitoring uptime check on `/api/health` come with the frontend.
+Custom domain (the team will pick it), FortiGuard classification (after the domain resolves) and a Cloud Monitoring
+uptime check on `/api/health`.
