@@ -162,6 +162,7 @@ def check_contract_shape(r: dict, req: dict):
     probs = [rec["survival_probability"] for rec in r["recommendations"]]
     assert probs == sorted(probs, reverse=True)
     for rec in r["recommendations"]:
+        assert rec["distance_km"] <= az.REC_MAX_CURATED_KM
         assert set(rec) == {"name", "lat", "lon", "distance_km", "survival_probability", "delta_pts"}
         assert rec["survival_probability"] > s["survival_probability"]
 

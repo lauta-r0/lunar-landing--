@@ -95,3 +95,26 @@ def test_500_internal(client, monkeypatch):
 def test_cors_localhost(client):
     r = client.get("/api/health", headers={"Origin": "http://localhost:5173"})
     assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_no_mojibake_and_charset(client):
+    """Responses declare utf-8 and carry no mojibake markers (text is escaped ASCII, decodes the same everywhere)."""
+    responses = [client.get("/api/health"), client.get("/api/meta"),
+                 client.post("/api/analyze", json={"target": SUMMIT}),
+                 client.post("/api/analyze", json={"target": {"lat": -80.0, "lon": 10.0}})]
+    for r in responses:
+        assert "charset=utf-8" in r.headers["content-type"]
+        for text in (r.content.decode("ascii"), r.content.decode("latin-1"), r.text):
+            assert "Ã" not in text and "â€" not in text and "Â" not in text
+    meta = responses[1].json()
+    assert "—" in meta["coverage"]["dem_name"] and "—" in meta["coverage"]["dem_name"]
+    assert "—" in " ".join(responses[2].json()["sources"])
+    assert "—" in responses[3].json()["message"] or "DEM" in responses[3].json()["message"]
+
+
+def test_recommendations_are_nearby(client):
+    """Recommended targets (rings of 1-3 km and curated sites) are within 5 km of the target."""
+    for target in (SUMMIT, {"lat": -85.23787, "lon": 33.95403}, {"lat": -84.79059, "lon": 29.19567}):
+        r = client.post("/api/analyze", json={"target": target}).json()
+        for rec in r["recommendations"]:
+            assert rec["distance_km"] <= 5.0, rec
