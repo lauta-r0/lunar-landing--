@@ -25,8 +25,9 @@ export function renderAbout(el, resp, meta) {
 
     <section>
       <h3>The problem</h3>
-      <p>A lander never touches down exactly on its target. Near the lunar south pole the Sun stays only a few degrees above the horizon, so a few hundred metres can separate sunlight from deadly shadow. In March 2025, IM-2 “Athena” landed about 250 m from its intended site near Mons Mouton, inside a shadowed crater and on its side; sunlight could not reach its solar cells and the mission ended about 13 hours later.</p>
-      <p style="margin-top:8px">LunaScout evaluates the <strong>whole landing ellipse</strong>, not a single point, and answers: what is the probability my mission survives where it will actually land?</p>
+      <p>A lander never touches down exactly on its target. Near the lunar south pole the Sun stays only a few degrees above the horizon, so a few hundred metres can separate sunlight from deadly shadow. On the 5 m Mons Mouton terrain, points inside a single 1 km-wide landing area can range from 0% to 100% of a 7-day mission in sunlight.</p>
+      <p style="margin-top:8px">LunaScout evaluates the <strong>whole landing ellipse</strong>, not a single point, and answers: what is the probability my mission survives where it will actually land? Its sunlit/shadow results agree with LROC QuickMap’s independent terrain-shadow model on 95.5–98.0% of about 3,000 test points on each of three dates.</p>
+      <p style="margin-top:8px">A real-world reminder: in 2025 IM-2 “Athena” landed a few hundred metres off target near Mons Mouton, tipped over in a crater about 20 m across and lost power (Hancock et al. 2026). Its site is a quick pick here as a test case; it comes out viable because the 20 m terrain data there cannot show that crater and LunaScout assumes an upright lander.</p>
     </section>
 
     <section>
@@ -54,7 +55,8 @@ export function renderAbout(el, resp, meta) {
       <ul>
         <li>The lander is equally likely to land anywhere inside the ellipse.</li>
         <li>Sunlit means the center of the solar disk is above the terrain horizon; 1-hour time step; observer 2 m above the ground by default; no atmosphere, so no refraction.</li>
-        <li>Boulders smaller than the DEM pixel are not resolved: tip-over risk is captured only through slope. Slopes from 20 m data can underestimate local steepness.</li>
+        <li>Boulders and craters smaller than the DEM pixel are not resolved: tip-over risk is captured only through slope. Slopes from 20 m data can underestimate local steepness.</li>
+        <li>The lander is assumed upright after touchdown, with panels and antenna 2 m above the ground; its attitude (for example after tipping over) and panel orientation are not modeled.</li>
         <li>No thermal model: the longest darkness period is the proxy for cold.</li>
         <li>Relay satellites, descent lighting and launch-window orbital constraints are out of scope.</li>
         ${warnings.map((w) => `<li>${esc(w)}</li>`).join("")}
@@ -63,7 +65,7 @@ export function renderAbout(el, resp, meta) {
 
     <section>
       <h3>Use of AI</h3>
-      <p>Parts of this software were developed with assistance from Claude (Anthropic). The concept, requirements and validation are the team’s work.</p>
+      <p>The team defined the problem, the requirements and the design decisions, and reviewed all results. Claude (Anthropic) assisted with the code, the documentation and the validation (tests and the comparisons with JPL Horizons and LROC QuickMap). Every AI-assisted code file says so in a header comment.</p>
     </section>
 
     <section>
