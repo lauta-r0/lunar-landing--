@@ -11,7 +11,7 @@ Tick each box only after you have checked it yourself.
 
 - [ ] All 4 members are **confirmed on the team at the same Local Event** (Space Apps profile → team page). `[TO VERIFY]` in the guide whether every member must confirm.
 - [ ] All required form fields are filled (project name, summary, demo link, final-project link, detailed description, SI use, NASA data, partner data/references). Text comes from `project_page.md`.
-- [ ] Every placeholder is replaced: `[TEAM NAME]`, `[NAME 1]`–`[NAME 4]`, `[DEMO LINK]`, and no `[TO VERIFY]` is left in anything submitted.
+- [ ] Every placeholder is replaced (`[DEMO LINK]` is the only one left) and no `[TO VERIFY]` is left in anything submitted. Team: CD Band.
 - [ ] The summary is about 150–200 words and the detailed description is 600–900 words (`project_page.md` has 199 and 892).
 - [ ] **Everything is in English** (form, README, slides, subtitles, UI). Only the video voice-over may be in Spanish.
 
@@ -47,7 +47,7 @@ Tick each box only after you have checked it yourself.
 - [ ] No sample or made-up data is shown as real. The only sample data is `fixtures/sample_response.json`, behind the **SAMPLE DATA — API OFFLINE** badge.
 - [ ] Athena wording is the validated one: *off target by a few hundred metres, tipped over in a ~20 m crater, mission ended about 12–13 h later.* **Never** "landed in shadow", "LunaScout would have predicted/saved Athena", or "validated against observations" (`docs/validation.md` §10).
 - [ ] Numbers used are only those in `docs/validation.md` §10, our own app output, or cited sources. Fonts, libraries and data sources are listed with licences/attribution.
-- [ ] README has the final screenshot (`docs/ui-desktop.png` is from an earlier build; retake it from the final deployment).
+- [ ] README screenshot (`docs/ui-desktop.png`, live run of 15 Nov 2026, 17.7 %) still matches the final deployment; retake it if the UI or numbers change.
 - [ ] Code licence decided and a `LICENSE` file added (MIT proposed).
 
 ## E. Submit

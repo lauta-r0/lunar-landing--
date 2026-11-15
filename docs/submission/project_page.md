@@ -1,7 +1,7 @@
 <!-- Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team. (Delete this line when pasting into the form.) -->
 # LunaScout — Space Apps project page (paste-ready)
 
-Challenge: **Lunar Landing Site Navigator** · Team: **[TEAM NAME]** · Members: [NAME 1], [NAME 2], [NAME 3], [NAME 4] (Systems Engineering, ORT Uruguay)
+Challenge: **Lunar Landing Site Navigator** · Team: **CD Band** · Members: Lautaro Montes, Agustin Guerequiz, Francisco Castelli, Sebastián Luciardi (Systems Engineering, ORT Uruguay)
 
 Every field of the project form is below. Text inside a code block is what to paste. Items marked `[TO VERIFY]` must be confirmed by the team before the final submission.
 

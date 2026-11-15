@@ -12,8 +12,7 @@ Built for the NASA Space Apps Challenge 2026, challenge *Lunar Landing Site Navi
 - **Demo:** [DEMO LINK]
 - **Planning aid, not an operational tool.**
 
-<!-- Screenshot: docs/ui-desktop.png was taken on an earlier build (default ellipse 2,000 x 1,200 m). Retake from the final deployment before submitting. -->
-![LunaScout main screen: mission settings, landing ellipse on the Mons Mouton hillshade with viable/risky/not-viable points, survival probability and timeline](docs/ui-desktop.png)
+![LunaScout main screen, live run of the Sunlit slope quick pick (2027-10-12): landing ellipse with viable/risky/not-viable points, survival probability 17.7 %, timeline and recommended nearby targets](docs/ui-desktop.png)
 
 ## Why the whole ellipse
 
@@ -126,7 +125,7 @@ The team came up with the idea and defined the problem, the requirements and the
 
 ## Team
 
-**[TEAM NAME]** — Systems Engineering students, ORT Uruguay: [NAME 1], [NAME 2], [NAME 3], [NAME 4].
+**CD Band** — Systems Engineering students, ORT Uruguay: Lautaro Montes, Agustin Guerequiz, Francisco Castelli, Sebastián Luciardi.
 
 ## License
 

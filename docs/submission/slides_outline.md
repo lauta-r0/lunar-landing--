@@ -12,7 +12,7 @@ Numbers marked `[TO VERIFY]` must be read from the live app / `docs/validation.m
 ### Slide 1 — Title
 **Text (21 words):**
 LunaScout. Plan where you'll land.
-Team [TEAM NAME]: [NAME 1], [NAME 2], [NAME 3], [NAME 4].
+Team CD Band: Lautaro Montes, Agustin Guerequiz, Francisco Castelli, Sebastián Luciardi.
 Challenge: Lunar Landing Site Navigator.
 **Visual:** full-bleed crop of the app's polar-stereographic hillshade with the green/amber/red ellipse glowing in the centre; wordmark "LUNASCOUT" top-left (text only, no logo from NASA).
 
