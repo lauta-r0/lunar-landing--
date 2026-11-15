@@ -4,6 +4,7 @@
     uvicorn api.main:app --port 8000
 
 Endpoints: GET /api/health, GET /api/meta, POST /api/analyze, GET /api/static/hillshade.png.
+Responses over 1 KB are gzip-compressed when the client accepts it (GZipMiddleware).
 The engine is loaded once at startup (lifespan); analyses run in a threadpool; identical requests
 are served from a thread-safe LRU cache (X-Cache: HIT|MISS, X-Compute-Ms).
 """
@@ -20,6 +21,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse as StarletteJSONResponse
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
@@ -146,6 +148,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="LunaScout API", version=SCHEMA_VERSION, lifespan=lifespan,
               default_response_class=JSONResponse)
+
+# the analyze JSON is ~140 KB; compress anything over 1 KB (clients that send Accept-Encoding: gzip)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 _origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(

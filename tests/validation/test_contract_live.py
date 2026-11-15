@@ -1,5 +1,5 @@
 # Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team.
-"""Contract shape (CONTRACT v1.3 section 4) and internal consistency of live /api/analyze responses.
+"""Contract shape (CONTRACT v1.4 section 4) and internal consistency of live /api/analyze responses.
 
 Beyond key presence, this re-derives values the response itself implies: the center-of-disk lit rule,
 target metrics from the timeseries, summary counts, and every point's class from CONTRACT 4.4.
@@ -22,7 +22,7 @@ TS = {"t0_utc", "step_h", "n", "sun_az_deg", "sun_el_deg", "horizon_at_sun_deg",
       "earth_el_deg", "horizon_at_earth_deg", "earth_visible", "sun_visible_fraction", "sun_margin_deg"}
 METRIC_IDS = ["sun_at_touchdown", "sun_hours", "longest_dark", "min_sun_margin", "earth_pct", "longest_comm_gap",
               "hours_until_sunset", "hours_until_earthset", "area_over_slope", "delay_tolerance"]
-REASONS = {"slope", "darkness", "comms_gap", "earth_time", "sunset", "no_sun_at_touchdown", "low_sun_margin"}
+REASONS = {"slope", "darkness", "comms_gap", "earth_time", "no_sun_at_touchdown", "low_sun_margin"}
 
 SCENARIOS = [
     dict(site=SUMMIT, t="2027-10-12T14:00:00Z", days=7, opts={"delay_days_max": 30, "include_recommendations": True}),
@@ -49,7 +49,7 @@ def _runs(a, value):
 def test_shape(resp):
     d, s = resp
     assert TOP <= set(d), TOP - set(d)
-    assert d["schema_version"] == "1.3" and d["is_sample"] is False
+    assert d["schema_version"] == "1.4" and d["is_sample"] is False
     assert SUMMARY <= set(d["summary"])
     assert [m["id"] for m in d["target_metrics"]] == METRIC_IDS
     for p in d["points"]:
@@ -77,7 +77,7 @@ def test_summary_counts(resp):
     assert sm["survival_probability_incl_risky"] == round((sm["viable"] + sm["risky"]) / sm["n_points"], 3)
     nn = [m for m in d["target_metrics"] if m["pass"] is not None]
     assert sm["checks_total"] == len(nn) and sm["checks_passed"] == sum(m["pass"] for m in nn)
-    assert sm["checks_total"] == 7       # margin 0 by default (CONTRACT v1.3)
+    assert sm["checks_total"] == 6       # margin 0 by default; sunset is informative (CONTRACT v1.4)
 
 
 def test_center_of_disk_rule_and_target_metrics(resp):
@@ -106,7 +106,6 @@ def test_point_classes_follow_contract_rules(resp):
     d, _ = resp
     L = d["inputs"]["limits"]
     rm = d["inputs"]["options"]["risk_margin"]
-    H = d["timeseries"]["n"]
     bad = []
     for p in d["points"]:
         nv = (p["slope_deg"] > L["max_slope_deg"] or p["longest_dark_h"] > L["max_dark_h"]
@@ -114,7 +113,7 @@ def test_point_classes_follow_contract_rules(resp):
               or not p["sun_at_touchdown"])
         risky = (p["slope_deg"] > (1 - rm) * L["max_slope_deg"] or p["longest_dark_h"] > (1 - rm) * L["max_dark_h"]
                  or p["longest_comm_gap_h"] > (1 - rm) * L["max_comm_gap_h"]
-                 or p["earth_pct"] < min(100, L["min_earth_pct"] * (1 + rm)) or p["hours_until_sunset"] < H)
+                 or p["earth_pct"] < min(100, L["min_earth_pct"] * (1 + rm)))   # v1.4: sunset is not a risk reason
         cls = "not_viable" if nv else ("risky" if risky else "viable")
         if cls != p["class"]:
             bad.append((p["id"], p["class"], cls, p))

@@ -241,7 +241,12 @@ the ray spacing on a 30 degree slope is about 0.17 degrees; from the nearest-pix
 5. **Metrics per point** over the mission window: sunlit hours, longest darkness, % of time with
    Earth visible, longest comms gap, hours until sunset, Sun at touchdown, slope. Run lengths are
    computed with cumulative numpy operations.
-6. **Classification** exactly as CONTRACT 4.4. `survival_probability = viable / n_points`.
+6. **Classification** exactly as CONTRACT 4.4 (v1.4). `survival_probability = viable / n_points`.
+   **Darkness is judged only by `longest_dark_h` against `max_dark_h`**: not_viable above the limit,
+   risky within `risk_margin` of it. A sunset during the mission does not make a point risky by
+   itself (before v1.4 it did, so the headline probability never changed with the battery size on
+   missions with a sunset; validation finding P1). `hours_until_sunset` is still computed and shown,
+   as an informative target metric (`pass` is `null`), so `checks_total` is 6 by default.
 7. **Delay curve**: the same (points x hours) arrays are sliced 24 h later for each delay day and
    reclassified. `delay_tolerance_days` is the last day up to which the target stays viable or risky.
 8. **Recommendations**: 24 candidates on rings at 1, 2 and 3 km (8 bearings) plus the curated
@@ -303,7 +308,7 @@ descriptive, not official names. The two IM-2 entries are real landing sites (so
 
 - Landing point **uniformly distributed** inside the ellipse (stated in every response).
 - Observer (solar array / antenna) **2 m** above the terrain.
-- **1 hour** time step; a sunset between two samples is located to the hour.
+- **1 hour** time step; a sunset between two samples is located to the hour. A sunset is informative only; whether the lander survives the night is decided by `longest_dark_h` vs. `max_dark_h` (CONTRACT v1.4).
 - **Center-of-disk** rule for sunlight; no penumbra in the classification.
 - Horizon known out to **100 km** (5 m tile, then 20 m / 40 m LOLA polar DEM).
 - No atmosphere, so no refraction (correct for the Moon).
@@ -340,7 +345,7 @@ descriptive, not official names. The two IM-2 entries are real landing sites (so
 
 ## 8. Tests
 
-`python -m pytest engine/tests -q` : **52 passed** (38 s, including the 10 ephemeris tests of the
+`python -m pytest engine/tests -q` : **57 passed** (about 1 min, including the 10 ephemeris tests of the
 ephemeris agent; the tests that need the real DEM are skipped when it is not downloaded).
 
 | Test | Expected | Result |
@@ -350,7 +355,9 @@ ephemeris agent; the tests that need the real DEM are skipped when it is not dow
 | Wall 60 m at 5 km | curvature term changes the answer by 0.08 degrees | matches the formula with curvature to 0.01 degrees |
 | Wall only to the east | high at azimuth 90, flat at 0 / 180 / 270 | passes (azimuth is clockwise from north) |
 | Symmetric bowl | horizon independent of azimuth | spread under 0.03 degrees (0.01 with bilinear sampling throughout) |
-| Classification | every rule of CONTRACT 4.4, limits and margins | passes |
+| Classification | every rule of CONTRACT 4.4, limits and margins; a sunset alone is not a reason (v1.4) | passes |
+| Battery rule (v1.4) | one point with a 60 h night: not_viable at max_dark_h 50, risky at 60-74, viable from 76; four points with nights of 30/60/100/200 h in 14 days all see a sunset, and the viable count goes 0, 1, 2, 3, 4 as max_dark_h goes 25, 50, 100, 150, 400 | passes |
+| Survival vs. battery, end to end (v1.4) | `analyze()` on a 14-day mission, other limits relaxed, every point with a sunset: P = 0.0 at max_dark_h 50 and above 0.5 at 250, never decreasing | passes |
 | Contract shape | keys, types, lengths, consistency of `analyze()` output | passes in grid mode, on-the-fly mode and without a grid |
 | Physical sanity (synthetic) | crater floor darker than the open plain; Sun never above (90 - lat) + 1.54 | passes |
 | Ellipse orientation | azimuth 0 elongates the ellipse along local north | passes |

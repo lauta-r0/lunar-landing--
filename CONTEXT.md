@@ -48,7 +48,7 @@ Requirements are tracked in a team spreadsheet (Problems → 26 needs N1–N26 �
 | Time step | 1 hour |
 | Lit rule | Sun center above the local terrain horizon at the Sun's azimuth; observer 2 m above the ground |
 | Probability | Fraction of viable points, assuming a uniform landing distribution inside the ellipse (stated in the UI) |
-| Classification | Exact rules in CONTRACT §4.4 (slope, darkness vs. battery, comms gap, Earth %, Sun at touchdown; risky = within the risk margin or a sunset during the mission) |
+| Classification | Exact rules in CONTRACT §4.4 (slope, darkness vs. battery, comms gap, Earth %, Sun at touchdown; risky = within the risk margin of a limit; a sunset alone is not a reason since CONTRACT v1.4) |
 | Earth metric | **% of mission time with Earth visible** + **longest comms gap**. NOT "hours per day": at the pole, Earth is visible for ~2 weeks, then hidden for ~2 weeks (libration) |
 | Colors | Sun yellow `#FFE066`, Earth blue `#8CC4FF`, viable `#3DDC84` ●, risky `#FF9F43` ▲, not viable `#FF6B6B` ✕ |
 | Design | Reference mockup in `docs/design/Main.dc.html` (visual reference only; its data and logic are fake) |
@@ -65,7 +65,7 @@ Requirements are tracked in a team spreadsheet (Problems → 26 needs N1–N26 �
 - Horizon modeled out to ~100 km (5 m tile, then 20 m / 40 m LOLA DEMs); terrain farther away is not modeled (a warning says so).
 - Terrain is 5 m/px on the Site20v2 tile and 20 m/px outside it (including the IM-2 sites): boulders and craters smaller than the pixel are missed and 20 m slopes underestimate steepness, so tip-over risk is captured only through slope.
 - The lander is assumed upright with panels/antenna 2 m above the ground; attitude after touchdown is not modeled.
-- Any sunset during the mission makes a point "risky", so the headline survival probability (viable only) does not change with battery size when the mission includes a sunset.
+- Since CONTRACT v1.4 a sunset during the mission no longer makes a point "risky": darkness is judged only by the longest dark run vs. the battery limit (`max_dark_h`), so the survival probability responds to battery size.
 - No thermal model (darkness duration is the proxy for cold).
 - Uniform landing distribution; 1 h time step; center-of-disk sunlight rule.
 - Relay satellites, descent lighting for navigation, launch-window orbital constraints and eclipses are **out of MVP scope** (mention them as future work).

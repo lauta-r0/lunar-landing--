@@ -1,4 +1,11 @@
-# LunaScout — Shared Contract (v1.3)
+# LunaScout — Shared Contract (v1.4)
+
+> **Changes in v1.4 (2026-11-15, team decision: classification rule, validation finding P1)** — `schema_version` is now `"1.4"`.
+> - A sunset during the mission no longer makes a point risky by itself. Darkness is judged only by `longest_dark_h` against `limits.max_dark_h`: not_viable above the limit, risky within `risk_margin` of it. The risky reason `sunset` is removed (it is never emitted); `hours_until_sunset` stays as a metric, now informative.
+> - Consequence: `survival_probability` now responds to `limits.max_dark_h` on missions that include a sunset (before, any sunset made the point risky at every battery size).
+> - Target metric `hours_until_sunset` has `pass: null` and `limit_display: "Reference"`, so `checks_total` is **6** by default (7 when a Sun margin > 0 is set).
+> - `GET /api/health` and every response report `"1.4"`. The API compresses responses over 1 KB with gzip when the client accepts it (no schema change).
+>
 
 > **Changes in v1.3 (2026-11-14, team decision: real data only)** — `schema_version` is now `"1.3"`.
 > - `min_sun_margin_deg` default is 0 (real data only); the margin is an optional user setting. `null` or absent = 0. `get_meta().defaults.limits.min_sun_margin_deg` is `0` and `min_sun_margin_auto_deg` is removed.
@@ -53,13 +60,13 @@ LunaScout is a single-screen web app for the lunar south pole. A lander never to
 Base path: `/api`. JSON only. CORS enabled for the frontend origin(s) and `http://localhost:*`.
 
 ### 4.1 `GET /api/health`
-`200 {"status":"ok","engine_ready":true,"schema_version":"1.3"}`
+`200 {"status":"ok","engine_ready":true,"schema_version":"1.4"}`
 
 ### 4.2 `GET /api/meta`
 Lets the frontend set defaults, limits and the map.
 ```json
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "coverage": {
     "dem_name": "LOLA 5 m/px LDEM — Site20v2 (Mons Mouton / Leibnitz beta plateau) + LOLA 20 m/px polar LDEM (...) + LOLA 40 m/px polar LDEM (...)",
     "bounds_xy_m": [-0.0, -0.0, 0.0, 0.0],
@@ -117,7 +124,7 @@ Lets the frontend set defaults, limits and the map.
 **Response 200**
 ```json
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "is_sample": false,
   "computed_utc": "2026-11-15T14:03:22Z",
   "compute_ms": 1840,
@@ -132,7 +139,7 @@ Lets the frontend set defaults, limits and the map.
     "viable": 64, "risky": 34, "not_viable": 20,
     "survival_probability": 0.542,
     "survival_probability_incl_risky": 0.831,
-    "checks_passed": 5, "checks_total": 7,
+    "checks_passed": 5, "checks_total": 6,
     "verdict": "risky"
   },
 
@@ -143,7 +150,7 @@ Lets the frontend set defaults, limits and the map.
     {"id": "min_sun_margin",     "label": "Minimum Sun clearance",     "value": 2.9,   "unit": "°",    "display": "2.9°",          "limit_display": "Reference", "pass": null},
     {"id": "earth_pct",          "label": "Mission time with Earth visible", "value": 58.0, "unit": "%", "display": "58%",        "limit_display": "≥ 50%",                    "pass": true},
     {"id": "longest_comm_gap",   "label": "Longest comms gap",         "value": 96.0,  "unit": "h",    "display": "4 d 0 h",       "limit_display": "≤ 72 h",                   "pass": false},
-    {"id": "hours_until_sunset", "label": "Time until sunset",         "value": 78.0,  "unit": "h",    "display": "3 d 6 h",       "limit_display": "≥ mission (7 d 0 h)",      "pass": false},
+    {"id": "hours_until_sunset", "label": "Time until sunset",         "value": 78.0,  "unit": "h",    "display": "3 d 6 h",       "limit_display": "Reference",                "pass": null},
     {"id": "hours_until_earthset","label": "Time until Earthset",      "value": 30.0,  "unit": "h",    "display": "1 d 6 h",       "limit_display": "Reference",                "pass": null},
     {"id": "area_over_slope",    "label": "Ellipse area over max slope","value": 6.0,  "unit": "%",    "display": "6% > 8°",       "limit_display": "≤ 20% of ellipse",         "pass": true},
     {"id": "delay_tolerance",    "label": "Launch-delay tolerance",    "value": 9,     "unit": "days", "display": "9 days",        "limit_display": "Days the target stays viable", "pass": null}
@@ -197,7 +204,7 @@ Lets the frontend set defaults, limits and the map.
 
 Field rules:
 - `points[].class` ∈ `"viable" | "risky" | "not_viable"`.
-- `points[].reasons` ⊆ `["slope", "darkness", "comms_gap", "earth_time", "sunset", "no_sun_at_touchdown", "low_sun_margin"]`. It lists the criteria that failed (not_viable) or are within the risk margin (risky).
+- `points[].reasons` ⊆ `["slope", "darkness", "comms_gap", "earth_time", "no_sun_at_touchdown", "low_sun_margin"]` (v1.4: `sunset` removed). It lists the criteria that failed (not_viable) or are within the risk margin (risky).
 - `summary.verdict` ∈ `"viable" | "risky" | "not_viable"`. It is the target point's class.
 - `target_metrics[].pass` is `true`, `false` or `null` (informational). `checks_passed` and `checks_total` count only non-null metrics.
 - `timeseries` arrays all have length `n` = `mission_days * 24`, for the **target point**. `sun_lit` and `earth_visible` are 0/1 integers. `sun_visible_fraction` (v1.1) is a float 0–1 per hour (display only). `sun_margin_deg` (v1.2) is the Sun elevation minus the horizon at the Sun's azimuth, degrees.
@@ -222,9 +229,9 @@ For each point, with mission window `[landing, landing + mission_days)` sampled 
   - `longest_dark_h > (1 - risk_margin) * max_dark_h`
   - `longest_comm_gap_h > (1 - risk_margin) * max_comm_gap_h`
   - `earth_pct < min_earth_pct * (1 + risk_margin)` (clipped at 100)
-  - `hours_until_sunset < mission_hours` → `sunset` (the mission will experience a sunset)
   - (v1.2) during the lit hours of the mission, min(`sun_el − horizon_at_sun`) < required Sun clearance (`limits.min_sun_margin_deg`; only when > 0) → `low_sun_margin`
 - **viable** otherwise.
+- (v1.4) A sunset during the mission does **not** make a point risky by itself. A point that sees a sunset but whose longest dark run fits the battery (`longest_dark_h` ≤ `(1 - risk_margin) * max_dark_h`) is viable. `hours_until_sunset` is reported for information only.
 - `survival_probability = viable / n_points`. `survival_probability_incl_risky = (viable + risky) / n_points`. **Assumption to state in the UI: landing is uniformly distributed inside the ellipse.**
 
 ### 4.5 Errors

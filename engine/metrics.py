@@ -12,7 +12,9 @@ VIABLE, RISKY, NOT_VIABLE = 0, 1, 2
 CLASS_NAMES = ("viable", "risky", "not_viable")
 
 FAIL_REASONS = ("slope", "darkness", "comms_gap", "earth_time", "no_sun_at_touchdown")
-RISK_REASONS = ("slope", "darkness", "comms_gap", "earth_time", "sunset", "low_sun_margin")
+# v1.4: "sunset" is no longer a risk reason. A sunset is judged only through longest_dark_h vs max_dark_h;
+# hours_until_sunset stays as an informational metric.
+RISK_REASONS = ("slope", "darkness", "comms_gap", "earth_time", "low_sun_margin")
 
 
 def longest_run(mask: np.ndarray) -> np.ndarray:
@@ -69,7 +71,11 @@ def point_metrics(sun_lit: np.ndarray, earth_visible: np.ndarray, step_h: float 
 
 def classify(metrics: dict, slope_deg: np.ndarray, limits: dict, risk_margin: float,
              mission_hours: float, sun_margin_req=None):
-    """Apply CONTRACT 4.4. Returns (codes (P,), fail_flags, risk_flags).
+    """Apply CONTRACT 4.4 (v1.4). Returns (codes (P,), fail_flags, risk_flags).
+
+    A sunset during the mission does not by itself make a point risky: darkness is judged only by
+    longest_dark_h against max_dark_h (not_viable above it, risky within risk_margin of it).
+    mission_hours is kept in the signature for callers and for the informational sunset metric.
 
     sun_margin_req: required Sun clearance (degrees, scalar or (P,)). A lit point whose
     min_sun_margin is below it is "risky" with reason low_sun_margin (never not_viable).
@@ -95,7 +101,6 @@ def classify(metrics: dict, slope_deg: np.ndarray, limits: dict, risk_margin: fl
         "darkness": metrics["longest_dark_h"] > k * max_dark,
         "comms_gap": metrics["longest_comm_gap_h"] > k * max_gap,
         "earth_time": metrics["earth_pct"] < min(100.0, min_earth * (1.0 + float(risk_margin))),
-        "sunset": metrics["hours_until_sunset"] < mission_hours,
     }
     if sun_margin_req is not None and "min_sun_margin" in metrics:
         low = metrics["min_sun_margin"]

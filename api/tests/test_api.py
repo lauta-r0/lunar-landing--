@@ -21,12 +21,12 @@ def client():
 def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "engine_ready": True, "schema_version": "1.3"}
+    assert r.json() == {"status": "ok", "engine_ready": True, "schema_version": "1.4"}
 
 
 def test_meta(client):
     m = client.get("/api/meta").json()
-    assert m["schema_version"] == "1.3"
+    assert m["schema_version"] == "1.4"
     assert m["defaults"]["limits"]["min_sun_margin_deg"] == 0
     assert "min_sun_margin_auto_deg" not in m["defaults"]
     assert m["map"]["hillshade_url"] == "/api/static/hillshade.png"
@@ -46,7 +46,7 @@ def test_analyze_default_and_cache(client):
     body = r.json()
     for k in TOP_KEYS:
         assert k in body, k
-    assert body["schema_version"] == "1.3" and body["is_sample"] is False
+    assert body["schema_version"] == "1.4" and body["is_sample"] is False
     assert body["inputs"]["limits"]["min_sun_margin_deg"] == 0
     assert "low_sun_margin" not in {x for p in body["points"] for x in p["reasons"]}
     r2 = client.post("/api/analyze", json={"target": SUMMIT, "mission_days": 7})   # same normalized request
@@ -118,3 +118,16 @@ def test_recommendations_are_nearby(client):
         r = client.post("/api/analyze", json={"target": target}).json()
         for rec in r["recommendations"]:
             assert rec["distance_km"] <= 5.0, rec
+
+
+def test_analyze_is_gzip_compressed_and_lossless(client):
+    """~140 KB JSON is compressed when the client accepts gzip (validation P2); the body decodes to the same data."""
+    app.state.cache.clear()
+    plain = client.post("/api/analyze", json={"target": SUMMIT}, headers={"Accept-Encoding": "identity"})
+    assert plain.status_code == 200 and "content-encoding" not in plain.headers
+    zipped = client.post("/api/analyze", json={"target": SUMMIT}, headers={"Accept-Encoding": "gzip"})
+    assert zipped.status_code == 200 and zipped.headers["content-encoding"] == "gzip"
+    assert zipped.headers["content-type"].startswith("application/json")
+    assert zipped.json()["summary"] == plain.json()["summary"]      # TestClient (httpx) decodes the gzip body
+    small = client.get("/api/health", headers={"Accept-Encoding": "gzip"})
+    assert "content-encoding" not in small.headers                   # under 1 KB: not compressed

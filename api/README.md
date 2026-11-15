@@ -1,6 +1,6 @@
 # LunaScout API
 
-FastAPI wrapper around the terrain engine (CONTRACT section 4, schema 1.3).
+FastAPI wrapper around the terrain engine (CONTRACT section 4, schema 1.4).
 
 ```bash
 pip install -r api/requirements.txt          # server
@@ -18,6 +18,8 @@ Runtime data (git-ignored, must exist locally): `data/raw/*.tif`, `data/derived/
 | `GET /api/meta` | coverage, curated sites, defaults, input limits |
 | `POST /api/analyze` | analysis (request body: CONTRACT 4.3). Headers `X-Cache: HIT\|MISS`, `X-Compute-Ms` |
 | `GET /api/static/hillshade.png` | LOLA hillshade for the map |
+
+Responses over 1 KB are gzip-compressed (`Content-Encoding: gzip`) when the client sends `Accept-Encoding: gzip`.
 
 Errors: 422 (invalid input, FastAPI), 400 `{"error","message",...}` (engine errors such as `out_of_coverage`),
 500 `{"error":"internal"}`.

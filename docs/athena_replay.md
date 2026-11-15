@@ -1,7 +1,7 @@
 <!-- Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team. -->
 # IM-2 "Athena" replay
 
-Generated 2026-11-14 23:50 UTC by `python scripts/athena_replay.py`; wording and sources revised 2026-11-15 after the independent validation (`docs/validation.md` §3).
+Generated 2026-11-15 12:42 UTC by `python scripts/athena_replay.py`; wording and sources revised 2026-11-15 after the independent validation (`docs/validation.md` §3).
 
 > **What this is.** LunaScout is a general landing-site tool; this page is one real-world **test case**, not a prediction. It checks that LunaScout runs on a real touchdown site and shows the limits of terrain-scale lighting: Athena's site was sunlit at the scale of the available terrain data (LunaScout and LROC QuickMap agree), and the mission was lost to the lander's attitude in a crater smaller than that data can show.
 

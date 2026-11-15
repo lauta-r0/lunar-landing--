@@ -72,10 +72,12 @@ def test_classification_rules():
     assert _classify(gap=58) == (RISKY, ["comms_gap"])          # > 0.8 * 72 = 57.6
     assert _classify(earth=59.9) == (RISKY, ["earth_time"])     # < 50 * 1.2 = 60
     assert _classify(earth=60.0) == (VIABLE, [])
-    assert _classify(sunset=100) == (RISKY, ["sunset"])
+    # v1.4: a sunset during the mission is NOT a reason by itself (darkness is judged by longest_dark_h only)
+    assert _classify(sunset=100) == (VIABLE, [])
+    assert _classify(sunset=0, dark=10) == (VIABLE, [])
     # several reasons, contract order
     assert _classify(slope=9, dark=60, gap=80) == (NOT_VIABLE, ["slope", "darkness", "comms_gap"])
-    assert _classify(slope=7, sunset=10) == (RISKY, ["slope", "sunset"])
+    assert _classify(slope=7, sunset=10) == (RISKY, ["slope"])
     # a not_viable point lists only what failed, not what is merely risky
     assert _classify(slope=9, dark=45) == (NOT_VIABLE, ["slope"])
 
@@ -114,3 +116,45 @@ def test_low_sun_margin_is_risky_never_not_viable():
     # margin 0 disables the rule (a lit hour always has a positive margin)
     codes0, _f, risk0 = metrics.classify(m, np.zeros(3), limits, 0.2, 24, sun_margin_req=0.0)
     assert not risk0["low_sun_margin"].any()
+
+
+def test_sunset_is_not_a_risk_reason():
+    """v1.4: "sunset" is gone from the risk criteria; hours_until_sunset stays as a metric only."""
+    assert "sunset" not in metrics.RISK_REASONS and "sunset" not in metrics.FAIL_REASONS
+    codes, fail, risk = metrics.classify(_metrics(sunset=5.0, dark=10.0), np.array([1.0]), LIMITS, 0.2, 168)
+    assert "sunset" not in risk and "sunset" not in fail
+    assert codes[0] == VIABLE
+
+
+def test_battery_size_moves_the_class_through_longest_dark_only():
+    """One point with a 60 h night and a sunset during the mission: only max_dark_h decides its class."""
+    for max_dark, expected in [(50, NOT_VIABLE), (60, RISKY), (70, RISKY), (74, RISKY), (76, VIABLE), (400, VIABLE)]:
+        limits = dict(LIMITS, max_dark_h=max_dark)
+        codes, fail, risk = metrics.classify(_metrics(dark=60.0, sunset=20.0), np.array([1.0]), limits, 0.2, 336)
+        assert codes[0] == expected, (max_dark, codes[0])
+        if expected == NOT_VIABLE:
+            assert metrics.reasons_for(0, codes, fail, risk) == ["darkness"]
+
+
+def test_survival_rises_with_max_dark_h_in_a_14_day_mission():
+    """Four points over 336 h, each with a sunset and a different longest night (30, 60, 100, 200 h).
+
+    Under the old rule every one of them was risky (sunset) at any battery size, so the viable count
+    never moved. Now it grows as the battery allows each night: 0 -> 1 -> 2 -> 3 -> 4 of 4.
+    """
+    hours = 14 * 24
+    lit = np.ones((4, hours), dtype=bool)
+    for row, night in enumerate((30, 60, 100, 200)):
+        lit[row, 40:40 + night] = False                    # first night starts after 40 h of light
+    earth = np.ones((4, hours), dtype=bool)
+    m = metrics.point_metrics(lit, earth)
+    assert m["longest_dark_h"].tolist() == [30, 60, 100, 200]
+    assert (m["hours_until_sunset"] < hours).all()          # every point sees a sunset
+
+    viable = []
+    for max_dark in (25, 50, 100, 150, 400):
+        limits = dict(LIMITS, max_dark_h=max_dark)
+        codes, _f, _r = metrics.classify(m, np.zeros(4), limits, 0.2, hours)
+        viable.append(int((codes == VIABLE).sum()))
+    # max_dark_h 25, 50, 100, 150, 400 -> 0, 1, 2, 3, 4 viable points
+    assert viable == [0, 1, 2, 3, 4]

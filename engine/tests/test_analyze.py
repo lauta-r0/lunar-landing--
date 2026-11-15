@@ -18,7 +18,7 @@ from engine.grid import HorizonGrid
 from engine.tests.conftest import CENTER_XY, make_terrain, real_dem_available
 
 CLASSES = {"viable", "risky", "not_viable"}
-REASONS = {"slope", "darkness", "comms_gap", "earth_time", "sunset", "no_sun_at_touchdown", "low_sun_margin"}
+REASONS = {"slope", "darkness", "comms_gap", "earth_time", "no_sun_at_touchdown", "low_sun_margin"}   # v1.4: no "sunset"
 METRIC_IDS = ["sun_at_touchdown", "sun_hours", "longest_dark", "min_sun_margin", "earth_pct", "longest_comm_gap",
               "hours_until_sunset", "hours_until_earthset", "area_over_slope", "delay_tolerance"]
 
@@ -87,7 +87,7 @@ def check_contract_shape(r: dict, req: dict):
                 "summary", "target_metrics", "points", "timeseries", "horizon_profile", "delay_curve",
                 "delay_tolerance_days", "recommendations", "map", "warnings", "sources"]:
         assert key in r, key
-    assert r["schema_version"] == "1.3" and isinstance(r["is_sample"], bool)
+    assert r["schema_version"] == "1.4" and isinstance(r["is_sample"], bool)
     assert r["computed_utc"].endswith("Z") and isinstance(r["compute_ms"], int)
     assert r["coverage"]["in_coverage"] is True and isinstance(r["coverage"]["dem_name"], str)
     for key in ["lat", "lon", "x_m", "y_m", "elevation_m", "slope_deg"]:
@@ -99,7 +99,7 @@ def check_contract_shape(r: dict, req: dict):
     assert s["survival_probability"] == round(s["viable"] / s["n_points"], 3)
     assert s["survival_probability_incl_risky"] == round((s["viable"] + s["risky"]) / s["n_points"], 3)
     assert s["verdict"] in CLASSES
-    assert s["checks_total"] == 7 and 0 <= s["checks_passed"] <= 7
+    assert s["checks_total"] == 6 and 0 <= s["checks_passed"] <= 6      # v1.4: sunset is informative (7 minus one)
 
     assert [m["id"] for m in r["target_metrics"]] == METRIC_IDS
     for m in r["target_metrics"]:
@@ -109,6 +109,7 @@ def check_contract_shape(r: dict, req: dict):
     assert sum(m["pass"] is True for m in r["target_metrics"]) == s["checks_passed"]
     by_id = {m["id"]: m for m in r["target_metrics"]}
     assert by_id["hours_until_earthset"]["pass"] is None and by_id["delay_tolerance"]["pass"] is None
+    assert by_id["hours_until_sunset"]["pass"] is None          # v1.4: informative only, not a check
 
     counts = {c: 0 for c in CLASSES}
     for i, p in enumerate(r["points"]):
@@ -249,6 +250,30 @@ def test_errors(engine_grid):
         with pytest.raises(EngineError) as e:
             az.analyze(center_request(**bad))
         assert e.value.code == "invalid_request"
+
+
+def test_survival_probability_responds_to_max_dark_h_in_a_14_day_mission(engine_grid):
+    """v1.4 (validation P1): raising the battery limit raises P even though every point sees a sunset.
+
+    Other limits are relaxed so darkness is the only thing that varies. Under the old rule every point
+    with a sunset was risky at any max_dark_h, so P stayed at 0 here.
+    """
+    def run(max_dark):
+        req = center_request(mission_days=14,
+                             limits={"max_dark_h": max_dark, "max_comm_gap_h": 400, "min_earth_pct": 0,
+                                     "max_slope_deg": 30},
+                             options={"delay_days_max": 0, "include_recommendations": False})
+        return az.analyze(req)
+
+    results = {d: run(d) for d in (50, 150, 250, 400)}
+    mission_h = 14 * 24
+    for r in results.values():                                   # every point has a sunset in the mission
+        assert all(p["hours_until_sunset"] < mission_h for p in r["points"])
+        assert all("sunset" not in p["reasons"] for p in r["points"])
+    probs = [results[d]["summary"]["survival_probability"] for d in (50, 150, 250, 400)]
+    assert probs == sorted(probs)                                # never decreases with a bigger battery
+    assert probs[0] < probs[2] <= probs[3]                       # and it does increase
+    assert probs[0] == 0.0 and probs[2] > 0.5
 
 
 def test_crater_floor_is_darker_than_the_plain(engine_grid):
