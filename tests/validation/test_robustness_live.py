@@ -22,7 +22,7 @@ def post(api, body):
 
 def test_health_and_meta(api, meta):
     h = requests.get(api + "/health", timeout=TIMEOUT).json()
-    assert h == {"status": "ok", "engine_ready": True, "schema_version": "1.4"}
+    assert h == {"status": "ok", "engine_ready": True, "schema_version": "1.5"}
     assert meta["defaults"]["limits"]["min_sun_margin_deg"] == 0
     assert meta["ephemeris_range_utc"] == ["2025-01-01T00:00:00Z", "2028-12-31T23:00:00Z"]
     ids = {s["id"] for s in meta["curated_sites"]}

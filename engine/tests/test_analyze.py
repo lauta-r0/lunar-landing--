@@ -87,7 +87,7 @@ def check_contract_shape(r: dict, req: dict):
                 "summary", "target_metrics", "points", "timeseries", "horizon_profile", "delay_curve",
                 "delay_tolerance_days", "recommendations", "map", "warnings", "sources"]:
         assert key in r, key
-    assert r["schema_version"] == "1.4" and isinstance(r["is_sample"], bool)
+    assert r["schema_version"] == "1.5" and isinstance(r["is_sample"], bool)
     assert r["computed_utc"].endswith("Z") and isinstance(r["compute_ms"], int)
     assert r["coverage"]["in_coverage"] is True and isinstance(r["coverage"]["dem_name"], str)
     for key in ["lat", "lon", "x_m", "y_m", "elevation_m", "slope_deg"]:
@@ -169,6 +169,7 @@ def check_contract_shape(r: dict, req: dict):
 
     mp = r["map"]
     assert len(mp["ellipse_polygon_xy_m"]) == 72 and len(mp["hillshade_bounds_xy_m"]) == 4
+    assert len(mp["hires_bounds_xy_m"]) == 4 and mp["hires_label"].startswith("LOLA ")
     x0, y0, x1, y1 = mp["view_bounds_xy_m"]
     assert x1 - x0 >= 5000.0 - 1e-6 and abs((x1 - x0) / (y1 - y0) - 1.5) < 1e-3
     assert abs((x0 + x1) / 2 - r["target"]["x_m"]) < 0.2 and abs((y0 + y1) / 2 - r["target"]["y_m"]) < 0.2
@@ -221,6 +222,8 @@ def test_meta_shape(engine_grid):
     assert abs(cov["center_lat"] + 85.42658) < 1e-4 and abs(cov["center_lon"] - 31.74276) < 1e-4
     assert meta["ephemeris_range_utc"] == ["2025-01-01T00:00:00Z", "2028-12-31T23:00:00Z"]
     assert meta["curated_sites"][0]["id"] == "mons_mouton_center"
+    hx0, hy0, hx1, hy1 = meta["map"]["hires_bounds_xy_m"]          # schema 1.5: extent of the finest level
+    assert hx0 < hx1 and hy0 < hy1 and meta["map"]["hires_label"].endswith(" m/px")
     assert meta["defaults"]["limits"] == {"max_dark_h": 50, "max_comm_gap_h": 72, "min_earth_pct": 50, "max_slope_deg": 8,
                                           "min_sun_margin_deg": 0}
     assert "min_sun_margin_auto_deg" not in meta["defaults"]     # v1.3: real data only, no automatic margin
