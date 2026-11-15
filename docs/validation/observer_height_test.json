@@ -1,0 +1,18 @@
+{
+ "2.0": {
+  "n": 2534,
+  "agree": 0.946,
+  "ls_lit_qm_dark": 126,
+  "ls_dark_qm_lit": 10,
+  "lit_ls": 0.475,
+  "lit_qm": 0.429
+ },
+ "0.1": {
+  "n": 584,
+  "agree": 0.961,
+  "ls_lit_qm_dark": 8,
+  "ls_dark_qm_lit": 15,
+  "lit_ls": 0.418,
+  "lit_qm": 0.43
+ }
+}

@@ -1,0 +1,370 @@
+{
+ "dates": [
+  {
+   "utc": "2025-03-06T17:00:00Z",
+   "label": "IM-2 Athena touchdown hour (Sun ~2.4 deg, az ~63 deg)",
+   "subsolar_lon": 95.0047,
+   "subsolar_lat": -0.3139,
+   "n": 2980,
+   "lit_ours": 0.123,
+   "lit_qm": 0.11,
+   "agreement": 0.98,
+   "kappa": 0.9,
+   "agreement_edge_tolerant": 0.995,
+   "ours_lit_qm_dark": 50,
+   "ours_dark_qm_lit": 11,
+   "agreement_5m_tile": 0.994,
+   "agreement_20m_area": 0.958,
+   "n_5m_tile": 1791,
+   "n_20m_area": 1189,
+   "qm_lit_fraction_whole_area": 0.134,
+   "api_call_s_median": 1.29
+  },
+  {
+   "utc": "2026-04-04T12:00:00Z",
+   "label": "Low Sun from the west-northwest (~1.5 deg, az ~303 deg)",
+   "subsolar_lon": -25.2091,
+   "subsolar_lat": 0.9864,
+   "n": 2980,
+   "lit_ours": 0.492,
+   "lit_qm": 0.458,
+   "agreement": 0.955,
+   "kappa": 0.91,
+   "agreement_edge_tolerant": 0.985,
+   "ours_lit_qm_dark": 118,
+   "ours_dark_qm_lit": 16,
+   "agreement_5m_tile": 0.975,
+   "agreement_20m_area": 0.924,
+   "n_5m_tile": 1791,
+   "n_20m_area": 1189,
+   "qm_lit_fraction_whole_area": 0.448,
+   "api_call_s_median": 1.44
+  },
+  {
+   "utc": "2027-10-12T14:00:00Z",
+   "label": "App default date (Sun ~6.1 deg, az ~0 deg, near maximum)",
+   "subsolar_lon": 31.8029,
+   "subsolar_lat": -1.4824,
+   "n": 2980,
+   "lit_ours": 0.655,
+   "lit_qm": 0.628,
+   "agreement": 0.968,
+   "kappa": 0.931,
+   "agreement_edge_tolerant": 0.992,
+   "ours_lit_qm_dark": 87,
+   "ours_dark_qm_lit": 7,
+   "agreement_5m_tile": 0.981,
+   "agreement_20m_area": 0.95,
+   "n_5m_tile": 1791,
+   "n_20m_area": 1189,
+   "qm_lit_fraction_whole_area": 0.56,
+   "api_call_s_median": 1.25
+  }
+ ],
+ "athena_site_hourly": {
+  "actual": [
+   {
+    "utc": "2025-03-06T17:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.445,
+    "ls_horizon_at_sun": 0.834,
+    "ls_margin": 1.611
+   },
+   {
+    "utc": "2025-03-06T18:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.486,
+    "ls_horizon_at_sun": 0.804,
+    "ls_margin": 1.682
+   },
+   {
+    "utc": "2025-03-06T19:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.526,
+    "ls_horizon_at_sun": 0.769,
+    "ls_margin": 1.758
+   },
+   {
+    "utc": "2025-03-06T20:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.567,
+    "ls_horizon_at_sun": 0.711,
+    "ls_margin": 1.856
+   },
+   {
+    "utc": "2025-03-06T21:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.607,
+    "ls_horizon_at_sun": 0.65,
+    "ls_margin": 1.957
+   },
+   {
+    "utc": "2025-03-06T22:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.647,
+    "ls_horizon_at_sun": 0.578,
+    "ls_margin": 2.069
+   },
+   {
+    "utc": "2025-03-06T23:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.687,
+    "ls_horizon_at_sun": 0.511,
+    "ls_margin": 2.176
+   },
+   {
+    "utc": "2025-03-07T00:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.727,
+    "ls_horizon_at_sun": 0.465,
+    "ls_margin": 2.262
+   },
+   {
+    "utc": "2025-03-07T01:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.766,
+    "ls_horizon_at_sun": 0.419,
+    "ls_margin": 2.347
+   },
+   {
+    "utc": "2025-03-07T02:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.805,
+    "ls_horizon_at_sun": 0.377,
+    "ls_margin": 2.429
+   },
+   {
+    "utc": "2025-03-07T03:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.845,
+    "ls_horizon_at_sun": 0.347,
+    "ls_margin": 2.497
+   },
+   {
+    "utc": "2025-03-07T04:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.883,
+    "ls_horizon_at_sun": 0.352,
+    "ls_margin": 2.531
+   },
+   {
+    "utc": "2025-03-07T05:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.922,
+    "ls_horizon_at_sun": 0.364,
+    "ls_margin": 2.558
+   },
+   {
+    "utc": "2025-03-07T06:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.961,
+    "ls_horizon_at_sun": 0.391,
+    "ls_margin": 2.57
+   },
+   {
+    "utc": "2025-03-07T07:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.999,
+    "ls_horizon_at_sun": 0.402,
+    "ls_margin": 2.597
+   }
+  ],
+  "intended": [
+   {
+    "utc": "2025-03-06T17:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.444,
+    "ls_horizon_at_sun": 0.81,
+    "ls_margin": 1.634
+   },
+   {
+    "utc": "2025-03-06T18:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.485,
+    "ls_horizon_at_sun": 0.728,
+    "ls_margin": 1.757
+   },
+   {
+    "utc": "2025-03-06T19:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.525,
+    "ls_horizon_at_sun": 0.647,
+    "ls_margin": 1.878
+   },
+   {
+    "utc": "2025-03-06T20:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.566,
+    "ls_horizon_at_sun": 0.593,
+    "ls_margin": 1.973
+   },
+   {
+    "utc": "2025-03-06T21:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.606,
+    "ls_horizon_at_sun": 0.539,
+    "ls_margin": 2.067
+   },
+   {
+    "utc": "2025-03-06T22:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.646,
+    "ls_horizon_at_sun": 0.503,
+    "ls_margin": 2.143
+   },
+   {
+    "utc": "2025-03-06T23:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.686,
+    "ls_horizon_at_sun": 0.467,
+    "ls_margin": 2.22
+   },
+   {
+    "utc": "2025-03-07T00:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.726,
+    "ls_horizon_at_sun": 0.429,
+    "ls_margin": 2.297
+   },
+   {
+    "utc": "2025-03-07T01:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.766,
+    "ls_horizon_at_sun": 0.399,
+    "ls_margin": 2.367
+   },
+   {
+    "utc": "2025-03-07T02:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.805,
+    "ls_horizon_at_sun": 0.419,
+    "ls_margin": 2.386
+   },
+   {
+    "utc": "2025-03-07T03:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.844,
+    "ls_horizon_at_sun": 0.437,
+    "ls_margin": 2.408
+   },
+   {
+    "utc": "2025-03-07T04:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.883,
+    "ls_horizon_at_sun": 0.441,
+    "ls_margin": 2.443
+   },
+   {
+    "utc": "2025-03-07T05:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.922,
+    "ls_horizon_at_sun": 0.438,
+    "ls_margin": 2.484
+   },
+   {
+    "utc": "2025-03-07T06:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.961,
+    "ls_horizon_at_sun": 0.408,
+    "ls_margin": 2.553
+   },
+   {
+    "utc": "2025-03-07T07:00:00Z",
+    "qm_lit": true,
+    "qm_3x3_min": 1.0,
+    "qm_3x3_max": 1.0,
+    "ls_lit": true,
+    "ls_sun_el": 2.999,
+    "ls_horizon_at_sun": 0.377,
+    "ls_margin": 2.622
+   }
+  ]
+ }
+}
