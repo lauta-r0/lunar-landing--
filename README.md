@@ -22,7 +22,7 @@ Built for the NASA Space Apps Challenge 2026, challenge *Lunar Landing Site Navi
 
 ![LunaScout main screen, live run of the Sunlit slope target −85.48962, 30.66935 (2027-10-12): landing ellipse with viable/risky/not-viable points, survival probability 17.7 %, timeline and recommended nearby targets](docs/ui-desktop.png)
 
-![Find best sites: approximate heatmap of the survival probability if you aim at each spot, with the five best aim points ranked on the map and in the results panel](docs/ui-best-sites.png)
+![Find best sites, live run from the VIPER Mission Area quick pick (2027-10-12, 5 m data only): approximate heatmap of the survival probability if you aim at each spot, with the five best aim points ranked on the map and in the results panel (best 80 %)](docs/ui-best-sites.png)
 
 ## Why the whole ellipse
 
