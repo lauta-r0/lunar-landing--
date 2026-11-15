@@ -25,8 +25,15 @@ const FALLBACK_DEFAULTS = {
   options: { risk_margin: 0.2, delay_days_max: 30, include_recommendations: true, observer_height_m: 2.0 },
 };
 
-// IM-2 Athena quick picks reproduce the real event: touchdown 2025-03-06 17:31 UTC, 10-day planned mission.
-const ATHENA_TIMING = { landing_utc: "2025-03-06T17:31:00Z", mission_days: 10 };
+// Quick picks: named lunar locations (lat, east-positive lon). Each one uses the default date and duration.
+const QUICK_PICKS = [
+  { id: "mons_mouton", name: "Mons Mouton", lat: -84.6, lon: 31.0,
+    note: "IAU reference center" },
+  { id: "viper_area", name: "VIPER Mission Area", lat: -85.42088, lon: 31.6218,
+    note: "published center of the VIPER rover study area" },
+  { id: "nobile_rim_1", name: "Nobile Rim 1", lat: -85.431, lon: 37.241,
+    note: "published reference point in a region NASA evaluated for Artemis" },
+];
 
 const FIELDS = {
   lat: "f-lat", lon: "f-lon", date: "f-date", days: "f-days",
@@ -282,28 +289,23 @@ function updateDirty() {
   updateBestStale();
 }
 
-/* ================= curated sites ================= */
+/* ================= quick picks ================= */
 
 function shortName(name) { return name.replace(/\s*\(.*\)\s*$/, ""); }
 
 function renderSites() {
   const list = $("sites-list");
-  const sites = state.meta?.curated_sites || [];
   list.innerHTML = "";
-  if (!sites.length) { list.parentElement.hidden = true; return; }
-  // IM-2 Athena entries first: they are the demo case.
-  const ordered = [...sites].sort((a, b) => (/athena/i.test(b.name) ? 1 : 0) - (/athena/i.test(a.name) ? 1 : 0));
-  for (const s of ordered) {
+  for (const s of QUICK_PICKS) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "chip" + (/athena/i.test(s.name) ? " chip--key" : "");
-    b.textContent = shortName(s.name);
+    b.className = "chip";
+    b.textContent = s.name;
     b.dataset.lat = s.lat;
     b.dataset.lon = s.lon;
     b.setAttribute("aria-pressed", "false");
-    const athena = /athena/i.test(s.name);
-    const timing = athena ? ATHENA_TIMING : { landing_utc: state.meta.defaults.landing_utc, mission_days: state.meta.defaults.mission_days };
-    b.dataset.tip = `${s.name} · ${fmtLat(s.lat)}, ${fmtLon(s.lon)} · landing ${fmtUtc(timing.landing_utc)}, ${timing.mission_days} days${athena ? " (the real IM-2 event)" : ""}. Select to analyze it.`;
+    const timing = { landing_utc: state.meta.defaults.landing_utc, mission_days: state.meta.defaults.mission_days };
+    b.dataset.tip = `${s.name} (${s.note}) · ${fmtLat(s.lat)}, ${fmtLon(s.lon)} · landing ${fmtUtc(timing.landing_utc)}, ${timing.mission_days} days. Select to analyze it.`;
     b.addEventListener("click", () => {
       $(FIELDS.lat).value = s.lat;
       $(FIELDS.lon).value = s.lon;
@@ -325,7 +327,7 @@ function markActiveChip() {
 }
 
 function siteNameFor(lat, lon) {
-  const s = (state.meta?.curated_sites || []).find((c) => Math.abs(c.lat - lat) < 1e-4 && Math.abs(c.lon - lon) < 1e-4);
+  const s = [...QUICK_PICKS, ...(state.meta?.curated_sites || [])].find((c) => Math.abs(c.lat - lat) < 1e-4 && Math.abs(c.lon - lon) < 1e-4);
   return s ? s.name : null;
 }
 

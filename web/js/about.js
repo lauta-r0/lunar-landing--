@@ -27,7 +27,7 @@ export function renderAbout(el, resp, meta) {
       <h3>The problem</h3>
       <p>A lander never touches down exactly on its target. Near the lunar south pole the Sun stays only a few degrees above the horizon, so a few hundred metres can separate sunlight from deadly shadow. On the 5 m Mons Mouton terrain, points inside a single 1 km-wide landing area can range from 0% to 100% of a 7-day mission in sunlight.</p>
       <p style="margin-top:8px">LunaScout evaluates the <strong>whole landing ellipse</strong>, not a single point, and answers: what is the probability my mission survives where it will actually land? Its sunlit/shadow results agree with LROC QuickMap’s independent terrain-shadow model on 95.5–98.0% of about 3,000 test points on each of three dates.</p>
-      <p style="margin-top:8px">A real-world reminder: in 2025 IM-2 “Athena” landed a few hundred metres off target near Mons Mouton, tipped over in a crater about 20 m across and lost power (Hancock et al. 2026). Its site is a quick pick here as a test case; it comes out viable because the 20 m terrain data there cannot show that crater and LunaScout assumes an upright lander.</p>
+      <p style="margin-top:8px">A real-world reminder: in 2025 IM-2 “Athena” landed a few hundred metres off target near Mons Mouton, tipped over in a crater about 20 m across and lost power (Hancock et al. 2026). You can reproduce it as a test case by entering its touchdown coordinates and date; it comes out viable because the 20 m terrain data there cannot show that crater and LunaScout assumes an upright lander.</p>
     </section>
 
     <section>
