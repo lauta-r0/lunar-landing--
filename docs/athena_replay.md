@@ -1,12 +1,14 @@
 <!-- Developed with assistance from Claude (Anthropic). Reviewed and integrated by the LunaScout team. -->
 # IM-2 "Athena" replay
 
-Generated 2026-11-14 23:50 UTC by `python scripts/athena_replay.py`.
+Generated 2026-11-14 23:50 UTC by `python scripts/athena_replay.py`; wording and sources revised 2026-11-15 after the independent validation (`docs/validation.md` §3).
+
+> **What this is.** LunaScout is a general landing-site tool; this page is one real-world **test case**, not a prediction. It checks that LunaScout runs on a real touchdown site and shows the limits of terrain-scale lighting: Athena's site was sunlit at the scale of the available terrain data (LunaScout and LROC QuickMap agree), and the mission was lost to the lander's attitude in a crater smaller than that data can show.
 
 ## Inputs
 
-- Intended site: lat -84.78, lon 29.13 E (LROC, primary source). Actual touchdown: lat -84.79059, lon 29.19567 E (Hancock et al. 2026, The Planetary Science Journal 7, https://doi.org/10.3847/PSJ/ae732f; it agrees with the LROC caption, 84.7906 S, 29.1957 E). Distance between the two coordinates: 369 m, bearing 150.6 deg. The paper reports the lander about 500 m from the intended site, so the intended-site coordinates used here are approximate (limitation).
-- Landing 2025-03-06T17:31:00Z (the engine uses a 1 h step, so 17:00 UTC), mission 10 days, default limits (max darkness 50 h, max comms gap 72 h, Earth >= 50%, slope <= 8 deg).
+- Intended site: lat -84.78, lon 29.13 E (LROC, primary source). Actual touchdown: lat -84.79059, lon 29.19567 E (Hancock et al. 2026, The Planetary Science Journal 7, https://doi.org/10.3847/PSJ/ae732f; it agrees with the LROC caption, 84.7906 S, 29.1957 E). Distance between the two coordinates: 369 m, bearing 150.6 deg. The intended site is published with two decimals (±0.005°, about ±150 m north-south), so the true distance is anywhere from 238 to 511 m; that range covers every reported value (Intuitive Machines 250 m, NASA more than 400 m, Hancock et al. about 500 m).
+- Landing 2025-03-06T17:31:00Z as entered (Hancock et al. give 17:28 UTC; either way the 1 h step uses 17:00 UTC), mission 10 days, default limits (max darkness 50 h, max comms gap 72 h, Earth >= 50%, slope <= 8 deg).
 - Ellipse 500 x 300 m (semi-axes), major axis at azimuth 150.6 deg, i.e. pointing from the intended site at the actual one, so the actual site is inside the ellipse.
 - Terrain: both sites are outside the LOLA 5 m/px tile; heights and slopes come from the LOLA 20 m/px polar DEM, horizons from the 20 m and 40 m DEMs out to 100 km.
 
@@ -29,10 +31,11 @@ Sample point of run A nearest to the actual touchdown (11 m from it): class **vi
 
 ## Honest reading
 
-- **The main result (real data only, margin 0) does not match what happened.** With the 20 m DEM LunaScout rates the actual touchdown **viable** (survival probability 0.93), but Athena lost power about 13 h after landing.
-- **Why: the data cannot resolve the crater.** Athena ended on its side inside a crater of about 20 m diameter (LROC image caption, NASA/GSFC/Arizona State University, reported by leonarddavid.com), which is about one pixel of the 20 m DEM. The available terrain data cannot represent it.
-- The real ephemeris and the 20/40 m terrain put the Sun **1.6 deg above the DEM horizon** during the first 13 h (Sun elevation 2.4-2.9 deg). To hide the whole solar disk, local relief only has to rise above the panels by about 0.3 m at 10 m, 0.7 m at 20 m, 1.6 m at 50 m; relief that small is below what a 20 m DEM resolves.
-- The lander tipped over: its panels were near the ground and misoriented. LunaScout assumes an upright lander with panels 2 m above the terrain.
+- **LunaScout does not reproduce the loss, and is not expected to.** With the 20 m DEM it rates the actual touchdown **viable** (survival probability 0.93); Athena lost power and the mission ended about 12–13 h after touchdown (Hancock et al. 2026: about 12 h; SpacePolicyOnline: about 13 h).
+- **Independent check:** LROC QuickMap's terrain-shadow model (20 m/px) also shows the actual and intended sites sunlit in all of the first 15 hours (`docs/validation.md` §3.3). Terrain-scale lighting was not the problem.
+- **Cause, per the primary source:** the landed "orientation and location resulted in a power-negative state" (Hancock et al. 2026). The lander ended on its side in a "20-meter diameter crater" (LROC featured image 1408, NAC M1495922531LR, NASA/GSFC/Arizona State University), which Hancock et al. describe as shallow. That crater is about one pixel of the 20 m DEM, so no available terrain data can represent it.
+- The real ephemeris and the 20/40 m terrain put the Sun **1.6 deg above the DEM horizon** during the first 13 h (Sun elevation 2.4-2.9 deg). To hide the whole solar disk, local relief only has to rise above the panels by about 0.3 m at 10 m, 0.7 m at 20 m, 1.6 m at 50 m; relief that small is below what a 20 m DEM resolves. This shows how little unresolved relief would matter; it does not show that the crater itself shadowed an upright lander (a shallow crater may not).
+- The lander tipped over, so its panels were near the ground and misoriented. LunaScout assumes an upright lander with panels 2 m above the terrain and does not model attitude.
 - Tip-over is captured only through the DEM slope, which a 20 m DEM smooths (boulders, crater rims, small craters), so the real local slope was likely steeper than shown.
 - The engine models sunlight, Earth visibility and slope; it does not model the descent, the landing dynamics or the lander's attitude after touchdown.
 
@@ -50,7 +53,7 @@ Sensitivity to unresolved terrain, not part of the default model. The user-set `
 
 ## Limitations
 
-- Intended-site coordinates (-84.78, 29.13) come from the LROC featured image (primary source) and are approximate; the paper puts the touchdown about 500 m from the intended site, while these coordinates are 369 m apart.
+- Intended-site coordinates (-84.78, 29.13) come from the LROC featured image with two decimals, so the intended-to-actual distance is only known to be 238-511 m (369 m at the nominal values).
 - The 20 m DEM cannot resolve the ~20 m crater Athena landed in, and the lander's attitude is not modeled.
 
 ## Warnings returned by the engine (run A, margin 0)
@@ -61,11 +64,11 @@ Sensitivity to unresolved terrain, not part of the default model. The user-set `
 
 ## Sources
 
-- Intended site: LROC featured image "IM-2 Landing Region", https://www.lroc.asu.edu/images/1401
-- Actual touchdown (84.79059 S, 29.19567 E): Hancock et al. 2026, "The Polar Resources Ice Mining Experiment-1 (PRIME-1) Payload Operations Summary from the IM-2 Mission", The Planetary Science Journal 7, https://doi.org/10.3847/PSJ/ae732f, Sect. 1.2 (about 500 m from the intended site)
-- Crater of about 20 m diameter, lander on its side: LROC "IM-2 Athena Seen Obliquely" caption, NAC M1495922531LR [NASA/GSFC/Arizona State University], https://lroc.im-ldi.com/images/1408; reported by https://www.leonarddavid.com/?p=44873
-- Touchdown time: Space.com, "12:31 p.m. EST (1731 GMT)"
-- Mission end ~13 h after landing: https://spacepolicyonline.com/news/im-2-mission-ends-one-day-after-lunar-landing/
+- Intended site: LROC featured image "IM-2 Landing Region", https://lroc.im-ldi.com/images/1401 (two decimals)
+- Actual touchdown (84.79059 S, 29.19567 E): Hancock et al. 2026, "The Polar Resources Ice Mining Experiment-1 (PRIME-1) Payload Operations Summary from the IM-2 Mission", The Planetary Science Journal 7, https://doi.org/10.3847/PSJ/ae732f, Sect. 1.2: touchdown 17:28 UTC, about 500 m from the intended site, power loss from "orientation and location", mission end about 12 h after touchdown
+- Crater of about 20 m diameter, lander on its side: LROC "IM-2 Athena Seen Obliquely" caption, NAC M1495922531LR [NASA/GSFC/Arizona State University], https://lroc.im-ldi.com/images/1408 (primary)
+- Touchdown time as entered in the replay: Space.com, "12:31 p.m. EST (1731 GMT)"; primary source above: 17:28 UTC
+- Mission end about 13 h after landing (press): https://spacepolicyonline.com/news/im-2-mission-ends-one-day-after-lunar-landing/
 - JPL Horizons System (Solar System Dynamics Group, NASA JPL) — Sun and Earth topocentric positions
 - LRO LOLA 5 m/px LDEM — Site20v2 (Mons Mouton / Leibnitz beta plateau) (Barker et al. 2021, NASA GSFC PGDA)
 - LRO LOLA 20 m/px and 40 m/px south polar LDEM (LRO-L-LOLA-4-GDR-V1.0, product v2.0, NASA PDS Geosciences Node; Smith et al. 2017)
