@@ -23,6 +23,9 @@ const FALLBACK_DEFAULTS = {
   options: { risk_margin: 0.2, delay_days_max: 30, include_recommendations: true, observer_height_m: 2.0 },
 };
 
+// IM-2 Athena quick picks reproduce the real event: touchdown 2025-03-06 17:31 UTC, 10-day planned mission.
+const ATHENA_TIMING = { landing_utc: "2025-03-06T17:31:00Z", mission_days: 10 };
+
 const FIELDS = {
   lat: "f-lat", lon: "f-lon", date: "f-date", days: "f-days",
   smaj: "f-smaj", smin: "f-smin", az: "f-az",
@@ -58,7 +61,7 @@ function fillForm(req) {
   const set = (k, v) => { $(FIELDS[k]).value = v ?? ""; };
   set("lat", req.target.lat);
   set("lon", req.target.lon);
-  set("date", (req.landing_utc || "").slice(0, 16));
+  set("date", isoToField(req.landing_utc));
   set("days", req.mission_days);
   set("smaj", req.ellipse.semi_major_m);
   set("smin", req.ellipse.semi_minor_m);
@@ -74,14 +77,28 @@ function fillForm(req) {
   set("height", req.options?.observer_height_m ?? 2);
 }
 
+/** "2027-10-12T14:00:00Z" → "2027-10-12 14:00" (the date field always shows ISO, never a locale format). */
+function isoToField(iso) {
+  return (iso || "").slice(0, 16).replace("T", " ");
+}
+
+/** "2027-10-12 14:00" (or with "T") → "2027-10-12T14:00:00Z"; "" if malformed. */
+function fieldToIso(text) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(text.trim());
+  if (!m) return "";
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00Z`;
+  const d = new Date(iso);
+  // reject impossible dates such as 2027-02-31 or 25:00
+  return !isNaN(d) && d.toISOString().slice(0, 16) === iso.slice(0, 16) ? iso : "";
+}
+
 function readForm() {
   const v = (k) => $(FIELDS[k]).value.trim();
   const num = (k) => (v(k) === "" ? NaN : Number(v(k)));
-  const date = v("date");
   const margin = v("margin") === "" ? 0 : Number(v("margin"));
   return {
     target: { lat: num("lat"), lon: num("lon") },
-    landing_utc: date ? `${date.slice(0, 16)}:00Z` : "",
+    landing_utc: fieldToIso(v("date")),
     mission_days: num("days"),
     ellipse: { semi_major_m: num("smaj"), semi_minor_m: num("smin"), azimuth_deg: num("az") },
     limits: {
@@ -125,11 +142,11 @@ function validate(req) {
   };
   check("lat", "e-lat", req.target.lat, [-90, 90], "Latitude");
   check("lon", "e-lon", req.target.lon, [-180, 180], "Longitude");
-  if (!req.landing_utc || isNaN(Date.parse(req.landing_utc))) errs.push(["date", "e-date", "Enter a landing date and time (UTC)."]);
+  if (!req.landing_utc) errs.push(["date", "e-date", "Use YYYY-MM-DD HH:MM (UTC), e.g. 2027-10-12 14:00."]);
   else if (state.meta?.ephemeris_range_utc) {
     const [a, b] = state.meta.ephemeris_range_utc.map(Date.parse);
     const t = Date.parse(req.landing_utc);
-    if (t < a || t > b) errs.push(["date", "e-date", `Ephemeris covers ${state.meta.ephemeris_range_utc[0].slice(0, 10)} to ${state.meta.ephemeris_range_utc[1].slice(0, 10)}.`]);
+    if (t < a || t > b) errs.push(["date", "e-date", `Ephemeris covers ${fmtUtc(state.meta.ephemeris_range_utc[0])} to ${fmtUtc(state.meta.ephemeris_range_utc[1])}.`]);
   }
   check("days", "e-days", req.mission_days, lim.mission_days || [1, 30], "Mission duration", { integer: true });
   check("smaj", "e-ellipse", req.ellipse.semi_major_m, lim.semi_major_m || [50, 5000], "Semi-major");
@@ -164,8 +181,8 @@ function applyInputLimits() {
     if (lim[key]) { $(FIELDS[k]).min = lim[key][0]; $(FIELDS[k]).max = lim[key][1]; }
   }
   if (state.meta.ephemeris_range_utc) {
-    $(FIELDS.date).min = state.meta.ephemeris_range_utc[0].slice(0, 16);
-    $(FIELDS.date).max = state.meta.ephemeris_range_utc[1].slice(0, 16);
+    const [a, b] = state.meta.ephemeris_range_utc;
+    $("h-date").innerHTML = `ISO format, UTC · YYYY-MM-DD HH:MM<br>Ephemeris: <span style="white-space:nowrap">${esc(a.slice(0, 10))}</span> to <span style="white-space:nowrap">${esc(b.slice(0, 10))}</span>`;
   }
 }
 
@@ -194,10 +211,14 @@ function renderSites() {
     b.dataset.lat = s.lat;
     b.dataset.lon = s.lon;
     b.setAttribute("aria-pressed", "false");
-    b.dataset.tip = `${s.name} · ${fmtLat(s.lat)}, ${fmtLon(s.lon)}. Select to analyze it.`;
+    const athena = /athena/i.test(s.name);
+    const timing = athena ? ATHENA_TIMING : { landing_utc: state.meta.defaults.landing_utc, mission_days: state.meta.defaults.mission_days };
+    b.dataset.tip = `${s.name} · ${fmtLat(s.lat)}, ${fmtLon(s.lon)} · landing ${fmtUtc(timing.landing_utc)}, ${timing.mission_days} days${athena ? " (the real IM-2 event)" : ""}. Select to analyze it.`;
     b.addEventListener("click", () => {
       $(FIELDS.lat).value = s.lat;
       $(FIELDS.lon).value = s.lon;
+      $(FIELDS.date).value = isoToField(timing.landing_utc);
+      $(FIELDS.days).value = timing.mission_days;
       run({ fromUser: true });
     });
     list.appendChild(b);
@@ -266,6 +287,7 @@ async function run({ fromUser = false } = {}) {
     const resp = await analyze(req);
     state.live = true;
     state.lastRunKey = runKey(req);
+    state.lastReq = req;
     setNotices([]);
     render(resp);
     saveInputs(req);
@@ -336,6 +358,7 @@ async function showSample(extraNotice) {
   try {
     const data = await loadFixture();
     state.lastRunKey = null;
+    state.lastReq = null;
     fillForm(data.inputs);
     render(data);
     if (extraNotice) setNotices([extraNotice]);
@@ -367,7 +390,10 @@ function render(resp) {
   const e = inputs.ellipse || {};
   const n = (resp.points || []).length;
   $("map-eyebrow").textContent = `Step 02 · Landing ellipse · ${Math.round(e.semi_major_m * 2).toLocaleString("en-US")} × ${Math.round(e.semi_minor_m * 2).toLocaleString("en-US")} m · ${n} sample points`;
-  $("coord-line").textContent = `${fmtLat(t.lat)} · ${fmtLon(t.lon)} · ${fmtUtc(inputs.landing_utc)}`;
+  // The engine samples hourly and echoes the landing time it actually used.
+  const asked = state.lastReq?.landing_utc;
+  const rounded = !isSample && asked && inputs.landing_utc && Date.parse(asked) !== Date.parse(inputs.landing_utc);
+  $("coord-line").textContent = `${fmtLat(t.lat)} · ${fmtLon(t.lon)} · ${fmtUtc(inputs.landing_utc)}${rounded ? ` (entered ${fmtUtc(asked).replace(" UTC", "")}; analysis uses 1 h steps)` : ""}`;
   const vb = resp.map?.view_bounds_xy_m;
   const slopeSrc = t.slope_coarse ? `${t.slope_dem_m ?? 20} m data, may underestimate` : `${t.slope_dem_m ?? 5} m data`;
   $("view-meta").innerHTML = [
@@ -470,7 +496,8 @@ function renderSurvival(resp) {
 
 function renderMetrics(resp) {
   const ul = $("metrics");
-  ul.innerHTML = (resp.target_metrics || []).map((m) => {
+  // delay_tolerance is shown in its own section with the sparkline, so it is not repeated here.
+  ul.innerHTML = (resp.target_metrics || []).filter((m) => m.id !== "delay_tolerance").map((m) => {
     const tip = METRIC_TIPS[m.id];
     const badge = m.pass === true
       ? `<span class="badge badge--pass">${ICON.check}PASS</span>`

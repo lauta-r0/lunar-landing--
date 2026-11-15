@@ -64,7 +64,8 @@
           <legend>Timing</legend>
           <div class="field">
             <label for="f-date">Landing date &amp; time (UTC)</label>
-            <input id="f-date" name="date" class="input" type="datetime-local" step="3600" required>
+            <input id="f-date" name="date" class="input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="YYYY-MM-DD HH:MM" pattern="\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}" aria-describedby="h-date" required>
+            <div class="field-hint num" id="h-date">ISO format, UTC · YYYY-MM-DD HH:MM</div>
             <p class="field-error" id="e-date"></p>
           </div>
           <div class="field">
