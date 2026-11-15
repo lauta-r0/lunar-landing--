@@ -162,6 +162,21 @@
           </button>
           <div class="dirty-note" id="dirty-note" hidden>Settings changed — run to update</div>
         </div>
+
+        <div class="best-block">
+          <button type="button" class="btn btn--block" id="best-btn" data-tip="Scans the whole region and ranks the areas with the highest survival probability. The best sites depend on the landing date and the mission settings above, so search again when you change them.">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="best-label">Find best sites</span>
+          </button>
+          <fieldset class="seg" id="best-region">
+            <legend class="sr-only">Terrain data to search for best sites</legend>
+            <input type="radio" name="region" id="rg-all" value="all" aria-describedby="rg-all-hint" data-tip="Includes 20 m terrain, which can hide small craters and slopes."><label for="rg-all" data-tip="Includes 20 m terrain, which can hide small craters and slopes.">All data<span class="seg-info" aria-hidden="true">i</span></label>
+            <input type="radio" name="region" id="rg-5m" value="5m" checked><label for="rg-5m">5 m only</label>
+            <input type="radio" name="region" id="rg-20m" value="20m"><label for="rg-20m">20 m only</label>
+          </fieldset>
+          <span class="sr-only" id="rg-all-hint">Includes 20 m terrain, which can hide small craters and slopes.</span>
+          <div class="field-hint">5 m only is the most reliable data: at least 95% of the ellipse must be on it.</div>
+        </div>
       </div>
     </form>
   </aside>
@@ -215,6 +230,18 @@
       <div class="map-tip" id="map-tip" hidden></div>
     </div>
     <p class="map-hint" id="map-hint">Click the map to pick a target</p>
+
+    <div class="heat-legend" id="heat-legend" hidden>
+      <button type="button" class="chip" id="heat-toggle" aria-pressed="true">Heatmap</button>
+      <span class="heat-scale-wrap">
+        <span>Survival probability if you aim here:</span>
+        <span class="num">0%</span>
+        <span class="heat-scale" aria-hidden="true"></span>
+        <span class="num">100%</span>
+      </span>
+      <span class="legend-item"><span class="rank-dot" aria-hidden="true">1</span><span>Best site (rank)</span></span>
+      <p class="legend-note heat-note">Approximate (coarse sampling); click a site for the full analysis.</p>
+    </div>
 
     <div class="legend" id="legend">
       <div class="eyebrow">Legend</div>
@@ -291,6 +318,17 @@
         <div class="caption">Targets with a higher survival probability. Select one to re-run there.</div>
       </div>
       <div class="recs" id="recs"></div>
+    </section>
+
+    <section aria-labelledby="best-title" style="display:flex;flex-direction:column;gap:12px" id="best-section" hidden>
+      <div class="section-head" style="gap:2px">
+        <div class="eyebrow">Step 05</div>
+        <h2 class="h2" id="best-title">Best sites in region</h2>
+        <div class="caption">Highest survival probability across the whole region for your date and mission settings. Select a site for the full analysis.</div>
+      </div>
+      <div class="dirty-note best-stale" id="best-stale" hidden>Settings changed — find best sites again to update</div>
+      <div class="recs" id="best-list" aria-live="polite" aria-busy="false"></div>
+      <ul class="best-notes" id="best-notes"></ul>
     </section>
   </aside>
 </main>

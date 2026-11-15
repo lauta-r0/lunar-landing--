@@ -34,7 +34,7 @@ from .errors import EngineError
 from .grid import GridSet, HorizonGrid, load_grids
 from .metrics import CLASS_NAMES, NOT_VIABLE, RISKY, VIABLE
 
-SCHEMA_VERSION = "1.5"
+SCHEMA_VERSION = "1.6"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EPHEMERIS_FILE = REPO_ROOT / "data" / "ephemeris" / "sun_earth_vectors.npz"
 
@@ -155,6 +155,13 @@ class _Engine:
         self.hires_bounds = [_r(v, 1) for v in layers[0].bounds]
         self.hires_label = f"LOLA {float(layers[0].pixel_m):g} m/px"
         self.coarse_label = f"LOLA {float(layers[1].pixel_m):g} m/px" if len(layers) > 1 else None
+        if grid is not None:
+            # node slopes always come from the slope rasters as slope_at() reads them now (one level
+            # per point, never blended across the 5 m / 20 m seam), whatever the grid files stored
+            for g in grid.grids:
+                jj, ii = np.meshgrid(np.arange(g.ny), np.arange(g.nx), indexing="ij")
+                gx, gy = g.node_xy(jj, ii)
+                g.slope_deg = np.asarray(terrain.slope_at(gx, gy), dtype=np.float32)
         self.fly_cache = _LRU(8)
         self.target_cache = _LRU(64)
         self.result_cache = _LRU(32)
@@ -168,8 +175,8 @@ class _Engine:
         return out
 
     def fine_layer(self, x, y):
-        """True where the 5 m tile (finest level) covers the point."""
-        return np.asarray(self.terrain.layer_index_at(x, y)) == 0
+        """True where the slope (and the near terrain) of the point comes from the finest level (5 m tile)."""
+        return np.asarray(self.terrain.slope_layer_index_at(x, y)) == 0
 
 
 _ENGINE: _Engine | None = None

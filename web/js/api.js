@@ -13,19 +13,34 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options = {}, timeoutMs = 30000) {
+/** A request cancelled by the caller's AbortSignal rejects with ApiError code "aborted". */
+function abortedError() {
+  const err = new ApiError(0, null, "Request cancelled.");
+  err.code = "aborted";
+  return err;
+}
+
+async function request(path, options = {}, timeoutMs = 30000, signal = null) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+  const onAbort = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
   let res;
+  let body = null;
   try {
     res = await fetch(API_BASE + path, { ...options, signal: ctrl.signal });
+    try { body = await res.json(); } catch (err) { if (err.name === "AbortError") throw err; /* non-JSON body */ }
   } catch (err) {
+    if (signal && signal.aborted && !timedOut) throw abortedError();
     throw new ApiError(0, null, err.name === "AbortError" ? "The API took too long to answer." : "Could not reach the API.");
   } finally {
     clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
   }
-  let body = null;
-  try { body = await res.json(); } catch { /* non-JSON body */ }
   if (!res.ok) throw new ApiError(res.status, body);
   return body;
 }
@@ -38,6 +53,14 @@ export const analyze = (payload) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+
+/** Region-wide scan (POST /api/best-sites). `signal` cancels an in-flight request. */
+export const bestSites = (payload, signal) =>
+  request("/best-sites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }, 60000, signal);
 
 /** Absolute URL for a path the API returns (e.g. "/api/static/hillshade.png"). */
 export function apiUrl(path) {

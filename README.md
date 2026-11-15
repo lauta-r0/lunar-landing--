@@ -6,6 +6,13 @@ Evaluate the whole lunar landing ellipse, not just one point: how likely is your
 
 Repository: https://github.com/lauta-r0/lunar-landing--
 
+## Features
+
+- Survival probability over the whole landing ellipse, with viable / risky / not viable points on a real LOLA map.
+- Mission timeline of Sun and Earth elevation against the terrain horizon, and launch-delay tolerance.
+- Recommended nearby targets with a higher survival probability.
+- Find the best landing areas for your mission across the whole region (approximate heatmap plus ranked sites; `POST /api/best-sites`, see `engine/ENGINE.md`, "Best sites").
+
 ## Structure
 
 ```

@@ -13,8 +13,10 @@ Levels 2 and 3 are optional (``scripts/prepare_regional_dem.py``). Without them 
 on the 5 m tile alone, as before. The regional layers are shifted vertically so that they match
 the 5 m DEM on the overlap (the offset is measured by the prep script, see regional_meta.json).
 
-Queries take the finest level that covers the point. Bilinear heights and slopes are blended
-linearly over BLEND_M inside the edge of a finer level, so there is no step at the seam.
+Queries take the finest level that covers the point. Bilinear heights are blended linearly over
+BLEND_M inside the edge of a finer level, so there is no step at the seam (rays cross it).
+Slopes are NOT blended: a slope is a per-point safety limit, so each point takes the slope raster
+of one level only (the finest one that covers it), and ``slope_layer_index_at`` reports which.
 """
 from __future__ import annotations
 
@@ -156,6 +158,14 @@ class Terrain:
         """Index (in self.layers) of the finest level covering each point; -1 outside."""
         return np.where(self.in_coverage(x, y), 0, -1)
 
+    def has_slope_at(self, x, y):
+        """True where slope_at() has a value: inside the pixel-center range of the slope raster."""
+        return (self.slp is not None) & (self.edge_distance(x, y) >= 0.5 * self.pixel_m)
+
+    def slope_layer_index_at(self, x, y):
+        """Index of the level whose slope raster gives slope_at() at each point; -1 where there is none."""
+        return np.where(self.has_slope_at(x, y), 0, -1)
+
     def in_coverage(self, x, y, margin_m: float = 0.0):
         """True where the point is inside the DEM and at least margin_m away from its edge."""
         return self.edge_distance(x, y) >= margin_m
@@ -262,8 +272,35 @@ class LayeredTerrain:
         return self._blend(lambda lay, a, b: lay.height_at(a, b), x, y)
 
     def slope_at(self, x, y):
-        return self._blend(lambda lay, a, b: (lay.slope_at(a, b) if lay.slp is not None
-                                              else np.full(np.broadcast(a, b).shape, np.nan)), x, y)
+        """Slope from the finest level whose slope raster covers the point; never mixed across a seam.
+
+        (Until schema 1.6 the slope was feathered like the heights, so within BLEND_M of the tile edge
+        a point labelled "5 m" carried a partly or fully 20 m slope. See ENGINE.md, "Seam check".)
+        """
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        shape = np.broadcast(x, y).shape
+        xf, yf = np.broadcast_to(x, shape).ravel(), np.broadcast_to(y, shape).ravel()
+        out = np.full(xf.size, np.nan)
+        todo = np.ones(xf.size, dtype=bool)
+        for lay in self.layers:
+            if lay.slp is None or not todo.any():
+                continue
+            v = lay.slope_at(xf[todo], yf[todo])
+            ok = np.isfinite(v)
+            idx = np.flatnonzero(todo)[ok]
+            out[idx] = v[ok]
+            todo[idx] = False
+        return out.reshape(shape)
+
+    def slope_layer_index_at(self, x, y):
+        """Index of the level whose slope raster gives slope_at() at each point; -1 where there is none."""
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        idx = np.full(np.broadcast(x, y).shape, -1, dtype=np.int64)
+        for k in range(len(self.layers) - 1, -1, -1):
+            idx = np.where(self.layers[k].has_slope_at(x, y), k, idx)
+        return idx
 
     def height_nearest(self, x, y):
         x = np.asarray(x, dtype=np.float64)
