@@ -78,8 +78,6 @@ export function reasonText(code, p, limits, missionH, failed) {
       return failed
         ? `Earth visible ${n1(p.earth_pct)}% of the mission (min ${n1(L.min_earth_pct)}%)`
         : `Earth visible ${n1(p.earth_pct)}% of the mission, close to the ${n1(L.min_earth_pct)}% minimum`;
-    case "sunset":
-      return `Sunset during the mission (after ${fmtHours(p.hours_until_sunset)})`;
     case "no_sun_at_touchdown":
       return "No sunlight at touchdown";
     case "low_sun_margin":
@@ -97,7 +95,7 @@ export const METRIC_TIPS = {
   min_sun_margin: "How far the Sun's center stays above the terrain horizon during the lit hours. Small values mean a tiny hill could block it.",
   earth_pct: "Share of the mission with Earth above the terrain horizon, so the lander can talk to Earth directly. At the pole Earth is visible for about two weeks, then hidden for about two weeks.",
   longest_comm_gap: "The longest stretch without a direct line of sight to Earth.",
-  hours_until_sunset: "Time from touchdown until the Sun first drops behind the terrain.",
+  hours_until_sunset: "Time from touchdown until the Sun first drops behind the terrain. For information only: whether the lander survives the dark is judged by the longest darkness period against the battery.",
   hours_until_earthset: "Time from touchdown until Earth first drops behind the terrain.",
   area_over_slope: "Share of the landing ellipse steeper than your maximum safe slope. Steep ground can tip a lander over.",
   delay_tolerance: "How many days the landing can slip while the target point stays viable.",
