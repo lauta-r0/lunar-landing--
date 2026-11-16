@@ -1,0 +1,5 @@
+# Derived data produced by scripts/prepare_dem.py, scripts/prepare_regional_dem.py and
+# scripts/precompute_horizons.py. The horizon grids are too large for git (GitHub limit: 100 MB per
+# file); rebuild them or copy them.
+horizon_tiles*/
+horizon_grid*/*.npy

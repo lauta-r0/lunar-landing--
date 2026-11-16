@@ -34,3 +34,6 @@ data/raw/*
 *.tiff
 !fixtures/*.tif
 !engine/tests/data/*.tif
+
+# Cached raw Horizons responses (regenerable)
+data/ephemeris/raw/

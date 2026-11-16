@@ -1,0 +1,113 @@
+{
+  "area": "fine",
+  "spacing_m": 50.0,
+  "margin_m": 1000.0,
+  "observer_height_m": 2.0,
+  "site_id": "Site20v2",
+  "nx": 481,
+  "ny": 481,
+  "x0": 61000.0,
+  "y0": 106000.0,
+  "ray_sampling": {
+    "s0_m": 10.0,
+    "ds_min_m": 5.0,
+    "growth": 0.01,
+    "near_bilinear_m": 1000.0,
+    "max_ray_m": 100000.0
+  },
+  "levels": [
+    {
+      "role": "fine",
+      "pixel_m": 5.0,
+      "bounds_xy_m": [
+        60000.0,
+        105000.0,
+        86000.0,
+        131000.0
+      ],
+      "z_offset_m": 0.0
+    },
+    {
+      "role": "near",
+      "pixel_m": 20.0,
+      "bounds_xy_m": [
+        41000.0,
+        86000.0,
+        110000.0,
+        168000.0
+      ],
+      "z_offset_m": 0.25
+    },
+    {
+      "role": "far",
+      "pixel_m": 40.0,
+      "bounds_xy_m": [
+        -39000.0,
+        6000.0,
+        190000.0,
+        248000.0
+      ],
+      "z_offset_m": 0.242
+    }
+  ],
+  "n_az": 360,
+  "az_step_deg": 1.0,
+  "reach_unit_m": 10.0,
+  "dem_name": "LOLA 5 m/px LDEM \u2014 Site20v2 (Mons Mouton / Leibnitz beta plateau) + LOLA 20 m/px polar LDEM (LDEM_80S_20M, PDS LOLA GDR v2.0) + LOLA 40 m/px polar LDEM (LDEM_80S_40M, PDS LOLA GDR v2.0)",
+  "dem_bounds_xy_m": [
+    60000.0,
+    105000.0,
+    86000.0,
+    131000.0
+  ],
+  "crs_proj4": "+proj=stere +lat_0=-90 +lat_ts=-90 +lon_0=0 +x_0=0 +y_0=0 +R=1737400 +units=m +no_defs +type=crs",
+  "terrain_levels": [
+    {
+      "role": "fine",
+      "name": "LOLA 5 m/px LDEM \u2014 Site20v2 (Mons Mouton / Leibnitz beta plateau)",
+      "pixel_m": 5.0,
+      "bounds_xy_m": [
+        60000.0,
+        105000.0,
+        86000.0,
+        131000.0
+      ],
+      "z_offset_m": 0.0
+    },
+    {
+      "role": "near",
+      "name": "LOLA 20 m/px polar LDEM (LDEM_80S_20M, PDS LOLA GDR v2.0)",
+      "pixel_m": 20.0,
+      "bounds_xy_m": [
+        41000.0,
+        86000.0,
+        110000.0,
+        168000.0
+      ],
+      "z_offset_m": 0.25
+    },
+    {
+      "role": "far",
+      "name": "LOLA 40 m/px polar LDEM (LDEM_80S_40M, PDS LOLA GDR v2.0)",
+      "pixel_m": 40.0,
+      "bounds_xy_m": [
+        -39000.0,
+        6000.0,
+        190000.0,
+        248000.0
+      ],
+      "z_offset_m": 0.242
+    }
+  ],
+  "horizon_min_deg": -7.29296875,
+  "horizon_max_deg": 33.78125,
+  "created_utc": "2026-11-14T22:16:40Z",
+  "arrays": {
+    "horizon_deg.npy": "float16 (ny, nx, 360) deg",
+    "reach_10m.npy": "uint16 (ny, nx, 360) x10 m",
+    "height_m.npy": "float32 (ny, nx)",
+    "slope_deg.npy": "float32 (ny, nx)",
+    "lat.npy": "float64 (ny, nx)",
+    "lon.npy": "float64 (ny, nx)"
+  }
+}

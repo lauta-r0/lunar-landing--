@@ -1,0 +1,506 @@
+{
+ "max_sun_el_2027_dem_center": {
+  "measured": 6.113,
+  "expected": 6.113419999999999
+ },
+ "max_sun_el_2027_athena_actual": {
+  "measured": 6.747,
+  "expected": 6.7494100000000055
+ },
+ "synodic_shift_summit_2027-10-12": {
+  "half": {
+   "touchdown_lit_agreement": 0.168,
+   "sun_az_shift_deg": 179.54,
+   "target_lit_hours_agreement_7d": 1.0,
+   "lit_fraction": 0.635
+  },
+  "full": {
+   "touchdown_lit_agreement": 1.0,
+   "sun_az_shift_deg": 0.22,
+   "target_lit_hours_agreement_7d": 1.0,
+   "lit_fraction": 0.393
+  },
+  "t0": {
+   "lit_fraction": 0.393
+  }
+ },
+ "monotonicity_-85.47628_2027-10-12": {
+  "slope_15_to_2": [
+   [
+    0.419,
+    0.424
+   ],
+   [
+    0.398,
+    0.419
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.237,
+    0.314
+   ],
+   [
+    0.131,
+    0.178
+   ],
+   [
+    0.055,
+    0.072
+   ]
+  ],
+  "dark_5_to_200": [
+   [
+    0.305,
+    0.335
+   ],
+   [
+    0.314,
+    0.347
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.331,
+    0.369
+   ]
+  ],
+  "gap_5_to_300": [
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ]
+  ],
+  "earth_90_to_0": [
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ],
+   [
+    0.326,
+    0.36
+   ]
+  ]
+ },
+ "monotonicity_-84.79059_2025-03-06": {
+  "slope_15_to_2": [
+   [
+    0.929,
+    0.929
+   ],
+   [
+    0.925,
+    0.929
+   ],
+   [
+    0.87,
+    0.921
+   ],
+   [
+    0.682,
+    0.824
+   ],
+   [
+    0.356,
+    0.502
+   ],
+   [
+    0.075,
+    0.109
+   ]
+  ],
+  "dark_5_to_200": [
+   [
+    0.833,
+    0.866
+   ],
+   [
+    0.854,
+    0.895
+   ],
+   [
+    0.87,
+    0.921
+   ],
+   [
+    0.87,
+    0.929
+   ],
+   [
+    0.87,
+    0.929
+   ]
+  ],
+  "gap_5_to_300": [
+   [
+    0.808,
+    0.833
+   ],
+   [
+    0.824,
+    0.874
+   ],
+   [
+    0.87,
+    0.921
+   ],
+   [
+    0.87,
+    0.921
+   ],
+   [
+    0.87,
+    0.921
+   ]
+  ],
+  "earth_90_to_0": [
+   [
+    0.803,
+    0.874
+   ],
+   [
+    0.862,
+    0.921
+   ],
+   [
+    0.87,
+    0.921
+   ],
+   [
+    0.87,
+    0.921
+   ],
+   [
+    0.87,
+    0.921
+   ]
+  ]
+ },
+ "delay_curve_vs_fresh_runs_summit": [
+  [
+   1,
+   0.461,
+   0.461
+  ],
+  [
+   3,
+   0.378,
+   0.378
+  ],
+  [
+   5,
+   0.167,
+   0.167
+  ]
+ ],
+ "ellipse_near_edge_status": [
+  400,
+  "out_of_coverage"
+ ],
+ "semi_minor_gt_major": {
+  "status": 200,
+  "body": "{\"schema_version\":\"1.4\",\"is_sample\":false,\"computed_utc\":\"2026-11-15T13:02:59Z\",\"compute_ms\":311,\"inputs\":{\"target\":{\"lat\":-85.47628,\"lon\":31.39691},\"landing_utc\":\"2027-10-12T14:00:00Z\",\"mission_days\":7,\"ellipse\":{\"semi_major_m\":300.0,\"semi_minor_m\":900.0,\"azimuth_deg\":0.0},\"limits\":{\"max_dark_h\":50"
+ },
+ "edge_cases": {
+  "tiny_50m": {
+   "wall_s": 2.99,
+   "compute_ms": 2127,
+   "n_points": 73,
+   "n": 168,
+   "warnings": [
+    "Horizon is modeled out to 101 km from the target: LOLA 5 m/px tile nearby, LOLA 20 m and 40 m/px polar DEM beyond it. Terrain farther than 100 km is not modeled.",
+    "100% of the sample points (target outside the tile) lie outside the LOLA 5 m/px tile: their terrain and slope come from the 20 m/px LOLA polar DEM, which smooths features smaller than about 40 m, so slopes there underestimate the local steepness (points flagged with slope_coarse = true). Tip-over risk from boulders and small craters is not captured.",
+    "Small ellipse: 73 sample points computed on the fly (hexagonal grid, 11 m spacing).",
+    "Survival probability assumes the landing point is uniformly distributed inside the ellipse."
+   ]
+  },
+  "huge_5km": {
+   "wall_s": 1.4,
+   "compute_ms": 633,
+   "n_points": 241,
+   "n": 168,
+   "warnings": [
+    "Horizon is modeled out to 101 km from the target: LOLA 5 m/px tile nearby, LOLA 20 m and 40 m/px polar DEM beyond it. Terrain farther than 100 km is not modeled.",
+    "Large ellipse: sampled every 566 m (241 of 31505 grid nodes).",
+    "Survival probability assumes the landing point is uniformly distributed inside the ellipse."
+   ]
+  },
+  "mission_30d": {
+   "wall_s": 2.03,
+   "compute_ms": 1170,
+   "n_points": 384,
+   "n": 720,
+   "warnings": [
+    "Horizon is modeled out to 101 km from the target: LOLA 5 m/px tile nearby, LOLA 20 m and 40 m/px polar DEM beyond it. Terrain farther than 100 km is not modeled.",
+    "Large ellipse: sampled every 71 m (384 of 755 grid nodes).",
+    "Survival probability assumes the landing point is uniformly distributed inside the ellipse."
+   ]
+  }
+ },
+ "timing_10_varied_calls": {
+  "wall_s": [
+   1.0,
+   1.1,
+   0.93,
+   1.06,
+   1.66,
+   1.42,
+   1.18,
+   1.11,
+   1.46,
+   1.25
+  ],
+  "compute_ms": [
+   272,
+   311,
+   180,
+   266,
+   390,
+   126,
+   183,
+   207,
+   353,
+   207
+  ],
+  "x_cache": [
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS",
+   "MISS, MISS"
+  ],
+  "wall_p50": 1.14,
+  "wall_p95": 1.57,
+  "compute_p50_ms": 236.5,
+  "compute_p95_ms": 373.34999999999997
+ },
+ "monotonicity_-85.47628_2026-01-20": {
+  "slope_15_to_2": [
+   [
+    0.055,
+    0.064
+   ],
+   [
+    0.051,
+    0.064
+   ],
+   [
+    0.042,
+    0.051
+   ],
+   [
+    0.03,
+    0.047
+   ],
+   [
+    0.021,
+    0.025
+   ],
+   [
+    0.013,
+    0.021
+   ]
+  ],
+  "dark_5_to_200": [
+   [
+    0.042,
+    0.047
+   ],
+   [
+    0.042,
+    0.051
+   ],
+   [
+    0.042,
+    0.051
+   ],
+   [
+    0.055,
+    0.072
+   ],
+   [
+    0.072,
+    0.093
+   ]
+  ],
+  "gap_5_to_300": [
+   [
+    0.021,
+    0.021
+   ],
+   [
+    0.025,
+    0.03
+   ],
+   [
+    0.042,
+    0.051
+   ],
+   [
+    0.047,
+    0.051
+   ],
+   [
+    0.047,
+    0.051
+   ]
+  ],
+  "earth_90_to_0": [
+   [
+    0.017,
+    0.038
+   ],
+   [
+    0.042,
+    0.051
+   ],
+   [
+    0.042,
+    0.051
+   ],
+   [
+    0.042,
+    0.051
+   ],
+   [
+    0.042,
+    0.051
+   ]
+  ]
+ },
+ "monotonicity_-85.42658_2026-01-20": {
+  "slope_15_to_2": [
+   [
+    0.104,
+    0.112
+   ],
+   [
+    0.104,
+    0.112
+   ],
+   [
+    0.079,
+    0.108
+   ],
+   [
+    0.071,
+    0.087
+   ],
+   [
+    0.037,
+    0.058
+   ],
+   [
+    0.017,
+    0.029
+   ]
+  ],
+  "dark_5_to_200": [
+   [
+    0.079,
+    0.1
+   ],
+   [
+    0.079,
+    0.104
+   ],
+   [
+    0.079,
+    0.108
+   ],
+   [
+    0.083,
+    0.112
+   ],
+   [
+    0.083,
+    0.124
+   ]
+  ],
+  "gap_5_to_300": [
+   [
+    0.029,
+    0.037
+   ],
+   [
+    0.037,
+    0.054
+   ],
+   [
+    0.079,
+    0.108
+   ],
+   [
+    0.087,
+    0.108
+   ],
+   [
+    0.087,
+    0.108
+   ]
+  ],
+  "earth_90_to_0": [
+   [
+    0.017,
+    0.058
+   ],
+   [
+    0.075,
+    0.108
+   ],
+   [
+    0.079,
+    0.108
+   ],
+   [
+    0.079,
+    0.108
+   ],
+   [
+    0.079,
+    0.108
+   ]
+  ]
+ }
+}

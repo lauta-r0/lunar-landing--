@@ -1,0 +1,89 @@
+{
+  "crs_proj4": "+proj=stere +lat_0=-90 +lat_ts=-90 +lon_0=0 +x_0=0 +y_0=0 +R=1737400 +units=m +no_defs",
+  "area_fine_xy_m": [
+    61000.0,
+    106000.0,
+    85000.0,
+    130000.0
+  ],
+  "area_regional_xy_m": [
+    61000.0,
+    130100.0,
+    85000.0,
+    148000.0
+  ],
+  "source_dir": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img",
+  "product_page": "https://pds-geosciences.wustl.edu/missions/lro/lola.htm",
+  "citation": "Smith, D. E., et al. (2017), Summary of the results from the Lunar Orbiter Laser Altimeter after seven years in lunar orbit, Icarus 283, 70-91, doi:10.1016/j.icarus.2016.06.006. Data: LRO-L-LOLA-4-GDR-V1.0 (product version 2.0), NASA PDS Geosciences Node.",
+  "layers": {
+    "near": {
+      "file": "ldem_80s_20m_crop.tif",
+      "product": "ldem_80s_20m",
+      "url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_20m.img",
+      "label_url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_20m.lbl",
+      "dataset": "LRO-L-LOLA-4-GDR-V1.0",
+      "version": "V2.0",
+      "pixel_m": 20.0,
+      "dn_scale": 0.5,
+      "bounds_xy_m": [
+        41000.0,
+        86000.0,
+        110000.0,
+        168000.0
+      ],
+      "margin_m": 20000.0,
+      "vs_fine_dem": {
+        "n_pixels": 1679616,
+        "median_m": -0.25,
+        "mean_m": -0.226,
+        "std_m": 1.57,
+        "p05_p95_m": [
+          -2.63,
+          2.3
+        ],
+        "best_shift_xy_m": [
+          0.0,
+          -0.0
+        ],
+        "rms_at_best_shift_m": 1.57,
+        "rms_at_zero_shift_m": 1.57
+      },
+      "vertical_correction_m": 0.25
+    },
+    "far": {
+      "file": "ldem_80s_40m_crop.tif",
+      "product": "ldem_80s_40m",
+      "url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_40m.img",
+      "label_url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/polar/img/ldem_80s_40m.lbl",
+      "dataset": "LRO-L-LOLA-4-GDR-V1.0",
+      "version": "V2.0",
+      "pixel_m": 40.0,
+      "dn_scale": 0.5,
+      "bounds_xy_m": [
+        -39000.0,
+        6000.0,
+        190000.0,
+        248000.0
+      ],
+      "margin_m": 100000.0,
+      "vs_fine_dem": {
+        "n_pixels": 417316,
+        "median_m": -0.242,
+        "mean_m": -0.229,
+        "std_m": 1.47,
+        "p05_p95_m": [
+          -2.53,
+          2.14
+        ],
+        "best_shift_xy_m": [
+          0.0,
+          -0.0
+        ],
+        "rms_at_best_shift_m": 1.47,
+        "rms_at_zero_shift_m": 1.47
+      },
+      "vertical_correction_m": 0.242
+    }
+  },
+  "created_utc": "2026-11-14T21:57:13Z"
+}
